@@ -1,0 +1,6 @@
+@DeBillPay_Backend_HostAddress = http://localhost:5141
+
+GET {{DeBillPay_Backend_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
