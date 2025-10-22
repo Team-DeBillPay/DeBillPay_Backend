@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Cryptography.KeyDerivation;
+﻿using Microsoft.AspNetCore.Cryptography.KeyDerivation;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.IdentityModel.Tokens;
@@ -7,6 +7,7 @@ using System.Security.Claims;
 using DeBillPay_Backend.Data;
 using DeBillPay_Backend.Models;
 using Microsoft.EntityFrameworkCore;
+using DeBillPay_Backend.DTOs;
 
 namespace DeBillPay_Backend.Endpoints
 {
@@ -87,6 +88,42 @@ namespace DeBillPay_Backend.Endpoints
 
                 var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
                 return Results.Ok(new { token = tokenString });
+            });
+            app.MapPatch("/api/users/{id}", async (int id, ApplicationDbContext db, UpdateUserDto dto) =>
+            {
+                var user = await db.Users.FindAsync(id);
+                if (user == null)
+                    return Results.NotFound("User not found");
+
+                if (!string.IsNullOrEmpty(dto.FirstName))
+                    user.FirstName = dto.FirstName;
+                if (!string.IsNullOrEmpty(dto.LastName))
+                    user.LastName = dto.LastName;
+                if (!string.IsNullOrEmpty(dto.Email))
+                    user.Email = dto.Email;
+                if (!string.IsNullOrEmpty(dto.PhoneNumber))
+                    user.PhoneNumber = dto.PhoneNumber;
+
+                if (!string.IsNullOrEmpty(dto.Password))
+                {
+                    using var sha = System.Security.Cryptography.SHA256.Create();
+                    var hash = Convert.ToBase64String(sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(dto.Password)));
+                    user.PasswordHash = hash;
+                }
+
+                await db.SaveChangesAsync();
+                return Results.Ok(user);
+            });
+            app.MapGet("/api/users", async (ApplicationDbContext db) =>
+            {
+                var users = await db.Users.ToListAsync();
+                return Results.Ok(users);
+            });
+
+            app.MapGet("/api/users/{id}", async (int id, ApplicationDbContext db) =>
+            {
+                var user = await db.Users.FindAsync(id);
+                return user is not null ? Results.Ok(user) : Results.NotFound();
             });
         }
     }
