@@ -6,12 +6,11 @@ using DeBillPay_Backend.Data;
 using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 
-// ✅ Додаємо Swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
-// JWT конфігурація
+
 var jwtSettings = builder.Configuration.GetSection("Jwt");
 var secretKey = builder.Configuration["Jwt:Key"];
 if (string.IsNullOrEmpty(secretKey))
@@ -39,17 +38,18 @@ builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
-// ✅ Використовуємо Swagger у Dev-режимі
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "My API V1");
+    });
 }
 
 app.UseAuthentication();
 app.UseAuthorization();
 
-// підключаємо ендпоінти
 app.MapUserEndpoints();
 
 app.Run();
