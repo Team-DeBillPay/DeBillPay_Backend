@@ -10,6 +10,19 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.WebHost.UseUrls("http://0.0.0.0:5141");
 
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.WithOrigins(
+                "http://localhost:5173"
+            )
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials();
+    });
+});
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -70,6 +83,7 @@ builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
+app.UseCors();
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
