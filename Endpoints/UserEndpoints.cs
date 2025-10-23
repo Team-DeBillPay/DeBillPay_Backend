@@ -8,6 +8,8 @@ using DeBillPay_Backend.Data;
 using DeBillPay_Backend.Models;
 using Microsoft.EntityFrameworkCore;
 using DeBillPay_Backend.DTOs;
+using DeBillPay_Backend.Services;
+using DeBillPay_Backend.Models.Validation;
 
 namespace DeBillPay_Backend.Endpoints
 {
@@ -21,13 +23,17 @@ namespace DeBillPay_Backend.Endpoints
                 if (await db.Users.AnyAsync(u => u.Email == dto.Email))
                     return Results.BadRequest("User already exists");
 
-                var salt = RandomNumberGenerator.GetBytes(16);
-                var hash = Convert.ToBase64String(KeyDerivation.Pbkdf2(
-                    password: dto.Password,
-                    salt: salt,
-                    prf: KeyDerivationPrf.HMACSHA256,
-                    iterationCount: 100000,
-                    numBytesRequested: 32));
+                var normalizedNewPhone = UkrainianPhoneAttribute.NormalizePhone(dto.PhoneNumber);
+                var existingUsers = await db.Users.ToListAsync();
+                if (existingUsers.Any(u => UkrainianPhoneAttribute.NormalizePhone(u.PhoneNumber) == normalizedNewPhone))
+                    return Results.BadRequest("Phone number already exists");
+
+                if (string.IsNullOrEmpty(dto.Password) || dto.Password.Length < 6)
+                    return Results.BadRequest("Password must be at least 6 characters");
+
+                var phoneAttr = new UkrainianPhoneAttribute();
+                if (!phoneAttr.IsValid(dto.PhoneNumber))
+                    return Results.BadRequest("Invalid phone number format");
 
                 var user = new User
                 {
@@ -35,7 +41,7 @@ namespace DeBillPay_Backend.Endpoints
                     LastName = dto.LastName,
                     Email = dto.Email,
                     PhoneNumber = dto.PhoneNumber,
-                    PasswordHash = $"{Convert.ToBase64String(salt)}.{hash}"
+                    PasswordHash = PasswordHasher.HashPassword(dto.Password)
                 };
 
                 db.Users.Add(user);
@@ -51,31 +57,23 @@ namespace DeBillPay_Backend.Endpoints
                 if (user == null)
                     return Results.BadRequest("Invalid email or password");
 
-                var parts = user.PasswordHash.Split('.');
-                if (parts.Length != 2)
-                    return Results.BadRequest("Password format invalid");
-
-                var salt = Convert.FromBase64String(parts[0]);
-                var storedHash = parts[1];
-                var enteredHash = Convert.ToBase64String(KeyDerivation.Pbkdf2(
-                    password: dto.Password,
-                    salt: salt,
-                    prf: KeyDerivationPrf.HMACSHA256,
-                    iterationCount: 100000,
-                    numBytesRequested: 32));
-
-                if (storedHash != enteredHash)
+                if (!PasswordHasher.VerifyPassword(dto.Password, user.PasswordHash))
                     return Results.BadRequest("Invalid email or password");
 
 
                 var jwtSettings = config.GetSection("Jwt");
-                var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Key"]));
+                var keyString = jwtSettings["Key"];
+                if (string.IsNullOrEmpty(keyString))
+                    throw new Exception("JWT Key is missing in configuration");
+                var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(keyString));
                 var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
                 var claims = new[]
                 {
                     new Claim(ClaimTypes.NameIdentifier, user.UserId.ToString()),
-                    new Claim(ClaimTypes.Email, user.Email)
+                    new Claim(ClaimTypes.Email, user.Email),
+                    new Claim(ClaimTypes.GivenName, user.FirstName),
+                    new Claim(ClaimTypes.Surname, user.LastName)
                 };
 
                 var token = new JwtSecurityToken(
@@ -87,44 +85,118 @@ namespace DeBillPay_Backend.Endpoints
                 );
 
                 var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
-                return Results.Ok(new { token = tokenString });
+                return Results.Ok(new
+                {
+                    token = tokenString,
+                    user = new
+                    {
+                        id = user.UserId,
+                        firstName = user.FirstName,
+                        lastName = user.LastName,
+                        email = user.Email
+                    }
+                });
             });
-            app.MapPatch("/api/users/{id}", async (int id, ApplicationDbContext db, UpdateUserDto dto) =>
+
+            app.MapPatch("/api/users/{id}", async (int id, HttpContext context, ApplicationDbContext db, UpdateUserDto dto) =>
             {
+                var userIdClaim = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (userIdClaim == null || !int.TryParse(userIdClaim, out var userId) || userId != id)
+                    return Results.Unauthorized();
+
                 var user = await db.Users.FindAsync(id);
                 if (user == null)
                     return Results.NotFound("User not found");
 
                 if (!string.IsNullOrEmpty(dto.FirstName))
+                {
+                    if (dto.FirstName.Length < 1 || dto.FirstName.Length > 50)
+                        return Results.BadRequest("FirstName must be between 1 and 50 characters");
                     user.FirstName = dto.FirstName;
+                }
+
                 if (!string.IsNullOrEmpty(dto.LastName))
+                {
+                    if (dto.LastName.Length < 1 || dto.LastName.Length > 50)
+                        return Results.BadRequest("LastName must be between 1 and 50 characters");
                     user.LastName = dto.LastName;
+                }
+
                 if (!string.IsNullOrEmpty(dto.Email))
+                {
+                    if (!new System.ComponentModel.DataAnnotations.EmailAddressAttribute().IsValid(dto.Email))
+                        return Results.BadRequest("Invalid email format");
+
+                    if (dto.Email != user.Email && await db.Users.AnyAsync(u => u.Email == dto.Email))
+                        return Results.BadRequest("Email already exists");
+
                     user.Email = dto.Email;
+                }
+
                 if (!string.IsNullOrEmpty(dto.PhoneNumber))
+                {
+                    var phoneAttr = new UkrainianPhoneAttribute();
+                    if (!phoneAttr.IsValid(dto.PhoneNumber))
+                        return Results.BadRequest("Invalid phone number format");
+                    var normalizedNewPhone = UkrainianPhoneAttribute.NormalizePhone(dto.PhoneNumber);
+                    var normalizedCurrentPhone = UkrainianPhoneAttribute.NormalizePhone(user.PhoneNumber);
+                    if (normalizedNewPhone != normalizedCurrentPhone)
+                    {
+                        var existingUsers = await db.Users.ToListAsync();
+                        if (existingUsers.Any(u => UkrainianPhoneAttribute.NormalizePhone(u.PhoneNumber) == normalizedNewPhone))
+                            return Results.BadRequest("Phone number already exists");
+                    }
                     user.PhoneNumber = dto.PhoneNumber;
+                }
 
                 if (!string.IsNullOrEmpty(dto.Password))
                 {
-                    using var sha = System.Security.Cryptography.SHA256.Create();
-                    var hash = Convert.ToBase64String(sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(dto.Password)));
-                    user.PasswordHash = hash;
+                    if (dto.Password.Length < 6)
+                        return Results.BadRequest("Password must be at least 6 characters");
+
+                    user.PasswordHash = PasswordHasher.HashPassword(dto.Password);
                 }
 
                 await db.SaveChangesAsync();
-                return Results.Ok(user);
-            });
+                return Results.Ok(new
+                {
+                    userId = user.UserId,
+                    firstName = user.FirstName,
+                    lastName = user.LastName,
+                    email = user.Email,
+                    phoneNumber = user.PhoneNumber
+                });
+            }).RequireAuthorization();
+
             app.MapGet("/api/users", async (ApplicationDbContext db) =>
             {
-                var users = await db.Users.ToListAsync();
+                var users = await db.Users
+                    .Select(u => new {
+                        u.UserId,
+                        u.FirstName,
+                        u.LastName,
+                        u.Email,
+                        u.PhoneNumber
+                    })
+                    .ToListAsync();
                 return Results.Ok(users);
-            });
+            }).RequireAuthorization();
 
             app.MapGet("/api/users/{id}", async (int id, ApplicationDbContext db) =>
             {
-                var user = await db.Users.FindAsync(id);
+                var user = await db.Users
+                    .Where(u => u.UserId == id)
+                    .Select(u => new {
+                        u.UserId,
+                        u.FirstName,
+                        u.LastName,
+                        u.Email,
+                        u.PhoneNumber
+                    })
+                    .FirstOrDefaultAsync();
+
                 return user is not null ? Results.Ok(user) : Results.NotFound();
-            });
+            }).RequireAuthorization();
         }
     }
 
