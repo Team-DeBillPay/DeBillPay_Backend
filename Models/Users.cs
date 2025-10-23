@@ -8,6 +8,7 @@ public class User
     public string Email { get; set; } = null!;
     public string PhoneNumber { get; set; } = null!;
     public string PasswordHash { get; set; } = null!;
+    public string? GoogleId { get; set; }
 
     public ICollection<Ebill> EbillsOrganized { get; set; } = new List<Ebill>();
     public ICollection<EbillParticipant> EbillParticipants { get; set; } = new List<EbillParticipant>();
