@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Cryptography.KeyDerivation;
+using Microsoft.Extensions.Configuration;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.IdentityModel.Tokens;
@@ -93,7 +94,8 @@ namespace DeBillPay_Backend.Endpoints
                         id = user.UserId,
                         firstName = user.FirstName,
                         lastName = user.LastName,
-                        email = user.Email
+                        email = user.Email,
+                        phoneNumber = user.PhoneNumber
                     }
                 });
             });
@@ -121,6 +123,8 @@ namespace DeBillPay_Backend.Endpoints
                         return Results.BadRequest("LastName must be between 1 and 50 characters");
                     user.LastName = dto.LastName;
                 }
+
+                var originalEmail = user.Email;
 
                 if (!string.IsNullOrEmpty(dto.Email))
                 {
@@ -158,13 +162,45 @@ namespace DeBillPay_Backend.Endpoints
                 }
 
                 await db.SaveChangesAsync();
+
+                string? newToken = null;
+                if (dto.Email != null && dto.Email != originalEmail)
+                {
+                    var jwtSettings = context.RequestServices.GetRequiredService<IConfiguration>().GetSection("Jwt");
+                    var keyString = jwtSettings["Key"];
+                    if (string.IsNullOrEmpty(keyString))
+                        throw new Exception("JWT Key is missing in configuration");
+
+                    var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(keyString));
+                    var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+                    var claims = new[]
+                    {
+                        new Claim(ClaimTypes.NameIdentifier, user.UserId.ToString()),
+                        new Claim(ClaimTypes.Email, user.Email),
+                        new Claim(ClaimTypes.GivenName, user.FirstName),
+                        new Claim(ClaimTypes.Surname, user.LastName)
+                    };
+
+                    var token = new JwtSecurityToken(
+                        issuer: jwtSettings["Issuer"],
+                        audience: jwtSettings["Audience"],
+                        claims: claims,
+                        expires: DateTime.UtcNow.AddMinutes(Convert.ToDouble(jwtSettings["ExpireMinutes"])),
+                        signingCredentials: creds
+                    );
+
+                    newToken = new JwtSecurityTokenHandler().WriteToken(token);
+                }
+
                 return Results.Ok(new
                 {
                     userId = user.UserId,
                     firstName = user.FirstName,
                     lastName = user.LastName,
                     email = user.Email,
-                    phoneNumber = user.PhoneNumber
+                    phoneNumber = user.PhoneNumber,
+                    token = newToken
                 });
             }).RequireAuthorization();
 
