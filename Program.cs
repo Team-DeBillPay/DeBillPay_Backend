@@ -3,6 +3,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using DeBillPay_Backend.Endpoints;
 using DeBillPay_Backend.Data;
+using DeBillPay_Backend.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 
@@ -63,6 +64,8 @@ if (string.IsNullOrEmpty(secretKey))
 
 var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey));
 
+builder.Services.AddHttpClient();
+builder.Services.AddScoped<IGoogleAuthService, GoogleAuthService>();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {

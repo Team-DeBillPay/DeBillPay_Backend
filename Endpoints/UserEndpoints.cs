@@ -233,9 +233,87 @@ namespace DeBillPay_Backend.Endpoints
 
                 return user is not null ? Results.Ok(user) : Results.NotFound();
             }).RequireAuthorization();
+
+            app.MapPost("/api/auth/google", async (
+                ApplicationDbContext db,
+                IConfiguration config,
+                IGoogleAuthService googleAuthService,
+                GoogleAuthDto dto) =>
+                        {
+                var googleUser = await googleAuthService.VerifyGoogleTokenAsync(dto.Token);
+                if (googleUser == null)
+                    return Results.BadRequest("Invalid Google token");
+
+                var user = await db.Users.FirstOrDefaultAsync(u => u.GoogleId == googleUser.Id);
+                if (user == null)
+                {
+                    user = await db.Users.FirstOrDefaultAsync(u => u.Email == googleUser.Email);
+                    if (user != null && string.IsNullOrEmpty(user.GoogleId))
+                    {
+                        user.GoogleId = googleUser.Id;
+                    }
+                }
+                if (user == null)
+                {
+                    user = new User
+                    {
+                        FirstName = googleUser.GivenName ?? "Google",
+                        LastName = googleUser.FamilyName ?? "User",
+                        Email = googleUser.Email,
+                        PhoneNumber = "",
+                        PasswordHash = "google_oauth",
+                        GoogleId = googleUser.Id
+                    };
+
+                    db.Users.Add(user);
+                    await db.SaveChangesAsync();
+                }
+
+                var jwtSettings = config.GetSection("Jwt");
+                var keyString = jwtSettings["Key"];
+                if (string.IsNullOrEmpty(keyString))
+                    throw new Exception("JWT Key is missing in configuration");
+
+                var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(keyString));
+                var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+                var claims = new[]
+                {
+                    new Claim(ClaimTypes.NameIdentifier, user.UserId.ToString()),
+                    new Claim(ClaimTypes.Email, user.Email),
+                    new Claim(ClaimTypes.GivenName, user.FirstName),
+                    new Claim(ClaimTypes.Surname, user.LastName),
+                    new Claim("isGoogleUser", "true")
+                };
+
+                var token = new JwtSecurityToken(
+                    issuer: jwtSettings["Issuer"],
+                    audience: jwtSettings["Audience"],
+                    claims: claims,
+                    expires: DateTime.UtcNow.AddMinutes(Convert.ToDouble(jwtSettings["ExpireMinutes"])),
+                    signingCredentials: creds
+                );
+
+                var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
+
+                return Results.Ok(new
+                {
+                    token = tokenString,
+                    user = new
+                    {
+                        id = user.UserId,
+                        firstName = user.FirstName,
+                        lastName = user.LastName,
+                        email = user.Email,
+                        phoneNumber = user.PhoneNumber,
+                        isGoogleUser = true
+                    }
+                });
+            });
         }
     }
 
     public record RegisterDto(string FirstName, string LastName, string Email, string PhoneNumber, string Password);
     public record LoginDto(string Email, string Password);
+    public record GoogleAuthDto(string Token);
 }
