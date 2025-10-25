@@ -54,28 +54,44 @@ namespace DeBillPay_Backend.Endpoints
 
             app.MapPost("/api/auth/login", async (ApplicationDbContext db, IConfiguration config, LoginDto dto) =>
             {
-                var user = await db.Users.FirstOrDefaultAsync(u => u.Email == dto.Email);
-                if (user == null)
-                    return Results.BadRequest("Invalid email or password");
+                User? user = null;
 
-                if (!PasswordHasher.VerifyPassword(dto.Password, user.PasswordHash))
-                    return Results.BadRequest("Invalid email or password");
+                if (!string.IsNullOrEmpty(dto.Email))
+                {
+                    user = await db.Users.FirstOrDefaultAsync(u => u.Email == dto.Email);
+                }
+                else if (!string.IsNullOrEmpty(dto.PhoneNumber))
+                {
+                    var normalizedPhone = UkrainianPhoneAttribute.NormalizePhone(dto.PhoneNumber);
 
+                    user = db.Users
+                        .AsEnumerable() 
+                        .FirstOrDefault(u =>
+                            UkrainianPhoneAttribute.NormalizePhone(u.PhoneNumber) == normalizedPhone);
+                }
+                else
+                {
+                    return Results.BadRequest("Email or phone number is required");
+                }
+
+                if (user == null || !PasswordHasher.VerifyPassword(dto.Password, user.PasswordHash))
+                    return Results.BadRequest("Invalid credentials");
 
                 var jwtSettings = config.GetSection("Jwt");
                 var keyString = jwtSettings["Key"];
                 if (string.IsNullOrEmpty(keyString))
                     throw new Exception("JWT Key is missing in configuration");
+
                 var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(keyString));
                 var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
                 var claims = new[]
                 {
-                    new Claim(ClaimTypes.NameIdentifier, user.UserId.ToString()),
-                    new Claim(ClaimTypes.Email, user.Email),
-                    new Claim(ClaimTypes.GivenName, user.FirstName),
-                    new Claim(ClaimTypes.Surname, user.LastName)
-                };
+        new Claim(ClaimTypes.NameIdentifier, user.UserId.ToString()),
+        new Claim(ClaimTypes.Email, user.Email),
+        new Claim(ClaimTypes.GivenName, user.FirstName),
+        new Claim(ClaimTypes.Surname, user.LastName)
+    };
 
                 var token = new JwtSecurityToken(
                     issuer: jwtSettings["Issuer"],
@@ -86,6 +102,7 @@ namespace DeBillPay_Backend.Endpoints
                 );
 
                 var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
+
                 return Results.Ok(new
                 {
                     token = tokenString,
@@ -314,6 +331,6 @@ namespace DeBillPay_Backend.Endpoints
     }
 
     public record RegisterDto(string FirstName, string LastName, string Email, string PhoneNumber, string Password);
-    public record LoginDto(string Email, string Password);
+    public record LoginDto(string? Email, string? PhoneNumber, string Password);
     public record GoogleAuthDto(string Token);
 }
