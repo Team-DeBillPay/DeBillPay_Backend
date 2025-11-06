@@ -8,8 +8,8 @@ public class Invitation
     public DateTime CreatedAt { get; set; }
 
     // FK
-    public int EbillId { get; set; }
-    public Ebill Ebill { get; set; } = null!;
+    public int? EbillId { get; set; }
+    public Ebill? Ebill { get; set; }
 
     public int SenderId { get; set; }
     public User Sender { get; set; } = null!;

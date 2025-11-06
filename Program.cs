@@ -96,7 +96,8 @@ app.UseSwaggerUI(c =>
 
 app.UseAuthentication();
 app.UseAuthorization();
-
+app.MapContactEndpoints();
+app.MapInvitationEndpoints();
 app.MapUserEndpoints();
 
 app.Run();
