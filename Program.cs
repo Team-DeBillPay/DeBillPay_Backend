@@ -99,5 +99,5 @@ app.UseAuthorization();
 app.MapContactEndpoints();
 app.MapInvitationEndpoints();
 app.MapUserEndpoints();
-
+app.MapEbillEndpoints();
 app.Run();
