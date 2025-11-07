@@ -17,7 +17,40 @@ public static class EbillEndpoints
     public static void MapEbillEndpoints(this IEndpointRouteBuilder app)
     {
 
+        app.MapGet("/api/ebills", async (HttpContext http, ApplicationDbContext db) =>
+        {
+            var userIdClaim = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userIdClaim is null)
+                return Results.Unauthorized();
 
+            int userId = int.Parse(userIdClaim);
+            var ebills = await db.Ebills
+.Where(e =>
+    e.OrganizerId == userId ||
+    e.Participants.Any(p => p.UserId == userId))
+                .Select(e => new
+                {
+                    e.EbillId,
+                    e.Name,
+                    e.Currency,
+                    e.AmountOfDept,
+                    e.Description,
+                    e.Scenario,
+                    e.Status,
+                    e.CreatedAt,
+                    e.UpdatedAt,
+                    Participants = e.Participants.Select(p => new {
+                        p.UserId,
+                        p.PaymentStatus,
+                        p.AssignedAmount,
+                        p.Balance,
+                        p.IsAdminRights
+                    })
+                })
+                .ToListAsync();
+
+            return Results.Ok(ebills);
+        });
         app.MapPost("/api/ebills/create", async (HttpContext http, ApplicationDbContext db, CreateEbillDto dto) =>
         {
             var userIdClaim = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
