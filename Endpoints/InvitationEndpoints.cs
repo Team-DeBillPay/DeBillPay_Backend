@@ -29,14 +29,14 @@ namespace DeBillPay_Backend.Endpoints
 
                 var invitations = await db.Invitations
                        .Where(i => i.ReceiverId == userId && i.Status == "pending")
-
+                       .Include(i => i.Sender)
                       .Select(i => new
                       {
                           i.InvitationId,
                           i.Type,
                           i.Status,
                           i.CreatedAt,
-                          From = new
+                          Sender = new
                           {
                               i.Sender.UserId,
                               i.Sender.FirstName,
