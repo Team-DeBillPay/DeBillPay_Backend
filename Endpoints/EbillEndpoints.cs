@@ -93,100 +93,99 @@ public static class EbillEndpoints
 
             switch (dto.Scenario.ToLower())
             {
-                // Рівний розподіл 
                 case "рівний розподіл":
                     {
                         if (participants.Count == 0)
                             return Results.BadRequest("No participants provided.");
-
-                        var share = dto.AmountOfDept / participants.Count;
+                        var amount = dto.AmountOfDept;
+                        var participants1 = participants.Count+1;
+                        var share = dto.AmountOfDept / participants1;
 
                         foreach (var p in participants)
                         {
                             ebill.Participants.Add(new EbillParticipant
                             {
                                 UserId = p.UserId,
-                                AssignedAmount = share,
+                                AssignedAmount = Math.Round(share),
                                 PaidAmount = 0,
-                                Balance = share,
-                                PaymentStatus = "pending",
+                                Balance = 0, // поки що 0
                                 IsAdminRights = false
                             });
                         }
 
+                        // Організатор лише адміністратор, не платить
                         ebill.Participants.Add(new EbillParticipant
                         {
                             UserId = organizerId,
-                            AssignedAmount = 0,
-                            PaidAmount = dto.AmountOfDept,
-                            Balance = 0,
-                            PaymentStatus = "paid",
+                            AssignedAmount = amount,
+                            PaidAmount = 0,
+                            Balance = amount,
                             IsAdminRights = true
                         });
 
                         break;
                     }
 
-                // Індивідуальні суми (організатор не платить)
                 case "індивідуальні суми":
                     {
                         foreach (var p in participants)
                         {
                             var assigned = p.Amount ?? 0;
                             var paid = p.PaidAmount;
-                            var balance = paid - assigned;
 
                             ebill.Participants.Add(new EbillParticipant
                             {
                                 UserId = p.UserId,
-                                AssignedAmount = assigned,
+                                AssignedAmount = Math.Round(assigned),
                                 PaidAmount = paid,
-                                Balance = balance,
-                                PaymentStatus = balance >= 0 ? "paid" : "pending",
+                                Balance = 0, // поки що 0
                                 IsAdminRights = p.UserId == organizerId
                             });
                         }
-
                         break;
                     }
-                // Спільні витрати (організатор не платить)
+
                 case "спільні витрати":
                     {
                         if (participants.Count == 0)
                             return Results.BadRequest("No participants provided.");
 
-                        decimal totalAmount = dto.AmountOfDept;
-
-                        decimal share = totalAmount / participants.Count;
+                        decimal share = dto.AmountOfDept / participants.Count;
 
                         foreach (var p in participants)
                         {
-                            decimal balance = p.PaidAmount - share;
-
                             ebill.Participants.Add(new EbillParticipant
                             {
                                 UserId = p.UserId,
-                                AssignedAmount = share,        
+                                AssignedAmount = Math.Round(share),
                                 PaidAmount = p.PaidAmount,
-                                Balance = balance,
-                                PaymentStatus = p.PaidAmount >= share ? "paid" : "pending",
+                                Balance = p.PaidAmount, // початковий баланс = сплачено
                                 IsAdminRights = p.UserId == organizerId
                             });
                         }
-
                         break;
                     }
                 default:
                     return Results.BadRequest("Unknown calculation scenario.");
             }
 
-            if (ebill.Participants.All(p => p.PaymentStatus == "paid"))
-                ebill.Status = "повністю оплачений";
-            else if (ebill.Participants.Any(p => p.PaymentStatus == "paid"))
-                ebill.Status = "частково оплачений";
-            else
-                ebill.Status = "активний";
+            // 🔹 Визначаємо PaymentStatus для кожного учасника
+            foreach (var p in ebill.Participants)
+            {
+                if (p.Balance >= p.AssignedAmount && p.AssignedAmount > 0)
+                    p.PaymentStatus = "погашений";
+                else if (p.Balance == 0)
+                    p.PaymentStatus = "непогашений";
+                else if (p.Balance > 0 && p.Balance < p.AssignedAmount)
+                    p.PaymentStatus = "частково погашений";
+                else
+                    p.PaymentStatus = "непогашений";
+            }
 
+            // 🔹 Визначаємо Status для самого e-bill
+            ebill.Status = ebill.Participants.All(p => p.PaymentStatus == "погашений")
+                            ? "закритий"
+                            : "активний";
             db.Ebills.Add(ebill);
             await db.SaveChangesAsync();
 
