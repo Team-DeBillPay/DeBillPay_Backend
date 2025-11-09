@@ -52,6 +52,44 @@ public static class EbillEndpoints
             return Results.Ok(ebills);
         });
 
+        app.MapGet("/api/ebills/{id:int}", async (int id, HttpContext http, ApplicationDbContext db) =>
+        {
+            var userIdClaim = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userIdClaim is null) return Results.Unauthorized();
+
+            int userId = int.Parse(userIdClaim);
+
+            var ebill = await db.Ebills
+                .Where(e => e.EbillId == id && (e.OrganizerId == userId || e.Participants.Any(p => p.UserId == userId)))
+                .Select(e => new
+                {
+                    e.EbillId,
+                    e.Name,
+                    e.Currency,
+                    e.AmountOfDept,
+                    e.Description,
+                    e.Scenario,
+                    e.Status,
+                    e.CreatedAt,
+                    e.UpdatedAt,
+                    Participants = e.Participants.Select(p => new
+                    {
+                        p.UserId,
+                        p.PaymentStatus,
+                        p.AssignedAmount,
+                        p.PaidAmount,
+                        p.Balance,
+                        p.IsAdminRights
+                    })
+                })
+                .FirstOrDefaultAsync();
+
+            if (ebill == null)
+                return Results.NotFound(new { message = "Чек не знайдено або у вас немає доступу" });
+
+            return Results.Ok(ebill);
+        });
+
         app.MapPost("/api/ebills/create", async (HttpContext http, ApplicationDbContext db, CreateEbillDto dto) =>
         {
             var userIdClaim = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -169,7 +207,6 @@ public static class EbillEndpoints
                     return Results.BadRequest("Unknown calculation scenario.");
             }
 
-            // 🔹 Визначаємо PaymentStatus для кожного учасника
             foreach (var p in ebill.Participants)
             {
                 if (p.Balance >= p.AssignedAmount && p.AssignedAmount > 0)
@@ -182,7 +219,6 @@ public static class EbillEndpoints
                     p.PaymentStatus = "непогашений";
             }
 
-            // 🔹 Визначаємо Status для самого e-bill
             ebill.Status = ebill.Participants.All(p => p.PaymentStatus == "погашений")
                             ? "закритий"
                             : "активний";
