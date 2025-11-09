@@ -136,8 +136,7 @@ public static class EbillEndpoints
                         if (participants.Count == 0)
                             return Results.BadRequest("No participants provided.");
                         var amount = dto.AmountOfDept;
-                        var participants1 = participants.Count+1;
-                        var share = dto.AmountOfDept / participants1;
+                        var share = dto.AmountOfDept / participants.Count;
 
                         foreach (var p in participants)
                         {
