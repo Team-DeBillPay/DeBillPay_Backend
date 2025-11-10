@@ -136,7 +136,8 @@ public static class EbillEndpoints
                         if (participants.Count == 0)
                             return Results.BadRequest("No participants provided.");
                         var amount = dto.AmountOfDept;
-                        var share = dto.AmountOfDept / participants.Count;
+                        var participants1 = participants.Count+1;
+                        var share = dto.AmountOfDept / participants1;
 
                         foreach (var p in participants)
                         {
@@ -154,7 +155,7 @@ public static class EbillEndpoints
                         ebill.Participants.Add(new EbillParticipant
                         {
                             UserId = organizerId,
-                            AssignedAmount = amount,
+                            AssignedAmount = Math.Round(share),
                             PaidAmount = 0,
                             Balance = amount,
                             IsAdminRights = true
@@ -206,17 +207,27 @@ public static class EbillEndpoints
                     return Results.BadRequest("Unknown calculation scenario.");
             }
 
-            foreach (var p in ebill.Participants)
-            {
+
+                foreach (var p in ebill.Participants)
+                {
+                if (ebill.Scenario == "індивідуальні суми")
+                {
+                    if (p.IsAdminRights)
+                    {
+                        p.PaymentStatus = "погашений";
+                        continue;
+                    }
+                }
                 if (p.Balance >= p.AssignedAmount && p.AssignedAmount > 0)
-                    p.PaymentStatus = "погашений";
-                else if (p.Balance == 0)
-                    p.PaymentStatus = "непогашений";
-                else if (p.Balance > 0 && p.Balance < p.AssignedAmount)
-                    p.PaymentStatus = "частково погашений";
-                else
-                    p.PaymentStatus = "непогашений";
-            }
+                        p.PaymentStatus = "погашений";
+                    else if (p.Balance == 0)
+                        p.PaymentStatus = "непогашений";
+                    else if (p.Balance > 0 && p.Balance < p.AssignedAmount)
+                        p.PaymentStatus = "частково погашений";
+                    else
+                        p.PaymentStatus = "непогашений";
+                }
+          
 
             ebill.Status = ebill.Participants.All(p => p.PaymentStatus == "погашений")
                             ? "закритий"
