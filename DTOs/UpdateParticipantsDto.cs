@@ -1,10 +1,9 @@
 namespace DeBillPay_Backend.DTOs
 {
-    public class AddParticipantDto
-    {
-        public int UserId { get; set; }
-
-    }
+public class AddParticipantsDto
+{
+    public List<int> UserIds { get; set; }
+}
     public class UpdateParticipantDto
     {
         public int? ParticipantId { get; set; }
