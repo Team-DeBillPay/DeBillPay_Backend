@@ -6,6 +6,7 @@ using DeBillPay_Backend.Data;
 using DeBillPay_Backend.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -85,6 +86,40 @@ builder.Services.AddAuthorization();
 
 
 var app = builder.Build();
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (BadHttpRequestException ex) when (ex.InnerException is JsonException jsonEx)
+    {
+        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+        await context.Response.WriteAsJsonAsync(new
+        {
+            error = "Invalid JSON format.",
+            message = jsonEx.Message
+        });
+    }
+    catch (JsonException ex)
+    {
+        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+        await context.Response.WriteAsJsonAsync(new
+        {
+            error = "Invalid JSON body.",
+            message = ex.Message
+        });
+    }
+    catch (FormatException ex)
+    {
+        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+        await context.Response.WriteAsJsonAsync(new
+        {
+            error = "Invalid input format.",
+            message = ex.Message
+        });
+    }
+});
 
 app.UseCors();
 app.UseSwagger();
@@ -99,5 +134,6 @@ app.UseAuthorization();
 app.MapContactEndpoints();
 app.MapInvitationEndpoints();
 app.MapUserEndpoints();
-app.MapEbillEndpoints();
+app.MapEditingEbillEndpoints();
+app.MapCreateEbillEndpoints();
 app.Run();

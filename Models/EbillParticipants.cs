@@ -10,7 +10,8 @@ public class EbillParticipant
     public decimal PaidAmount { get; set; }
     public string PaymentStatus { get; set; } = null!;
 	public bool IsAdminRights { get; set; }
-	public decimal Balance { get; set; }
+    public bool IsEditorRights { get; set; }
+    public decimal Balance { get; set; }
 
 	public int UserId { get; set; }
 	public User User { get; set; } = null!;
