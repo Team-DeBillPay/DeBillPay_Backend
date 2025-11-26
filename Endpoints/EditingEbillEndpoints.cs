@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Cryptography.KeyDerivation;
+п»їusing Microsoft.AspNetCore.Cryptography.KeyDerivation;
 using Microsoft.Extensions.Configuration;
 using System.Security.Cryptography;
 using System.Text;
@@ -17,63 +17,106 @@ public static class EditingEbillEndpoints
 {
 	public static void MapEditingEbillEndpoints(this IEndpointRouteBuilder app)
 	{
-
 		app.MapPut("/api/ebills/{ebillId:int}/editor-rights",
-		async (int ebillId, [FromBody] UpdateEditorRightsDto dto, HttpContext http, ApplicationDbContext db) =>
+		async (int ebillId, UpdateEditorRightsDto dto, HttpContext http, ApplicationDbContext db) =>
 		{
-			try
+			var userId = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+			if (userId is null)
+				return Results.Json(new { error = "Unauthorized" }, statusCode: 401);
+
+			int userIdInt = int.Parse(userId);
+
+			// 1. РџРµСЂРµРІС–СЂРєР° РїРѕСЂРѕР¶РЅСЊРѕРіРѕ СЃРїРёСЃРєСѓ
+			if (dto.Participants == null || dto.Participants.Count == 0)
+				return Results.BadRequest(new { error = "Participants list cannot be empty" });
+
+			// 2. РџРµСЂРµРІС–СЂРєР° РґСѓР±Р»С–РєР°С‚С–РІ
+			if (dto.Participants.Select(x => x.ParticipantId).Distinct().Count() != dto.Participants.Count)
+				return Results.BadRequest(new { error = "Duplicate ParticipantId values detected in request" });
+
+			var ebill = await db.Ebills
+				.Include(e => e.Participants)
+				.FirstOrDefaultAsync(e => e.EbillId == ebillId);
+
+			if (ebill is null)
+				return Results.NotFound(new { error = "E-bill not found" });
+
+			// 3. РџРµСЂРµРІС–СЂРєР°, С‰Рѕ user вЂ“ РѕСЂРіР°РЅС–Р·Р°С‚РѕСЂ
+			if (ebill.OrganizerId != userIdInt)
+				return Results.Json(new { error = "Only organizer can update editor rights" }, statusCode: 403);
+
+			// РЎРїРёСЃРѕРє РїСЂРѕР±Р»РµРј
+			var errors = new List<string>();
+
+			// РџРµСЂРµРІС–СЂРєРё
+			foreach (var item in dto.Participants)
 			{
-				var userId = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-				if (userId is null)
-					return Results.Json(new { error = "Unauthorized: No user claim found." }, statusCode: StatusCodes.Status401Unauthorized);
-
-				int userIdInt = int.Parse(userId);
-
-				var ebill = await db.Ebills
-					.Include(e => e.Participants)
-					.FirstOrDefaultAsync(e => e.EbillId == ebillId);
-
-				if (ebill is null)
-					return Results.Json(new { error = $"E-bill with ID {ebillId} not found." }, statusCode: StatusCodes.Status404NotFound);
-
-				if (ebill.OrganizerId != userIdInt)
-					return Results.Json(new { error = "You do not have permission to change editor rights." }, statusCode: StatusCodes.Status403Forbidden);
-
 				var participant = ebill.Participants
-					.FirstOrDefault(p => p.ParticipantId == dto.ParticipantId);
+					.FirstOrDefault(p => p.ParticipantId == item.ParticipantId);
 
-				if (participant is null)
-					return Results.Json(new { error = $"Participant with ID {dto.ParticipantId} not found in this E-bill." }, statusCode: StatusCodes.Status404NotFound);
+				if (participant == null)
+				{
+					errors.Add($"Participant {item.ParticipantId} not found");
+					continue;
+				}
 
 				if (participant.UserId == ebill.OrganizerId)
-					return Results.Json(new { error = "Organizator cannot changed editor rights" }, statusCode: StatusCodes.Status400BadRequest);
-
-				participant.IsEditorRights = dto.IsEditorRights;
-
-				await db.SaveChangesAsync();
-
-				return Results.Json(new
 				{
-					error = "Editor rights updated successfully.",
-					participantId = participant.ParticipantId,
-					isEditorRights = participant.IsEditorRights
+					errors.Add($"Cannot update rights for organizer (ParticipantId={item.ParticipantId})");
+					continue;
+				}
+
+				// вќ— РќРѕРІРµ РїСЂР°РІРёР»Рѕ: СЏРєС‰Рѕ IsEditorRights РІР¶Рµ true вЂ” Р·Р°Р±РѕСЂРѕРЅРёС‚Рё Р·РјС–РЅСѓ
+				if (participant.IsEditorRights == true)
+				{
+					errors.Add($"Participant {item.ParticipantId} already has editor rights and cannot be modified");
+					continue;
+				}
+			}
+
+			// РЇРєС‰Рѕ Р·РЅР°Р№С€Р»Рё С…РѕС‡ РѕРґРЅСѓ РїРѕРјРёР»РєСѓ в†’ РЅРµ РѕРЅРѕРІР»СЋС”РјРѕ Р±Р°Р·Сѓ
+			if (errors.Count > 0)
+			{
+				return Results.BadRequest(new
+				{
+					message = "Validation failed",
+					errors
 				});
 			}
-			catch (Exception ex)
+
+			// РЈСЃРµ РѕРє вЂ” Р·Р°СЃС‚РѕСЃРѕРІСѓС”РјРѕ Р·РјС–РЅРё
+			foreach (var item in dto.Participants)
 			{
-				Console.Error.WriteLine(ex);
-				return Results.Json(new { error = $"Internal server error: {ex.Message}" }, statusCode: StatusCodes.Status500InternalServerError);
+				var participant = ebill.Participants
+					.First(p => p.ParticipantId == item.ParticipantId);
+
+				participant.IsEditorRights = item.IsEditorRights;
 			}
+
+			await db.SaveChangesAsync();
+
+			return Results.Ok(new
+			{
+				message = "Editor rights updated successfully",
+				updated = dto.Participants.Select(x => x.ParticipantId).ToList()
+			});
 		})
 		.RequireAuthorization();
-		app.MapPost("/api/ebills/{ebillId:int}/participants/add",
-		async (int ebillId, AddParticipantDto dto, HttpContext http, ApplicationDbContext db) =>
+	
+	app.MapPost("/api/ebills/{ebillId:int}/participants/add",
+		async (int ebillId, AddParticipantsDto dto, HttpContext http, ApplicationDbContext db) =>
 		{
 			var userIdClaim = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 			if (userIdClaim is null)
 				return Results.Json(new { error = "Unauthorized" }, statusCode: 401);
 
 			int userId = int.Parse(userIdClaim);
+
+			if (dto.UserIds == null || dto.UserIds.Count == 0)
+				return Results.BadRequest(new { error = "UserIds list cannot be empty" });
+
+			if (dto.UserIds.Count != dto.UserIds.Distinct().Count())
+				return Results.BadRequest(new { error = "Duplicate user IDs detected in request" });
 
 			var ebill = await db.Ebills
 				.Include(e => e.Participants)
@@ -83,7 +126,6 @@ public static class EditingEbillEndpoints
 				return Results.NotFound(new { error = "E-bill not found" });
 
 			var currentUser = ebill.Participants.FirstOrDefault(p => p.UserId == userId);
-
 			if (ebill.OrganizerId != userId &&
 				(currentUser == null || (!currentUser.IsAdminRights && !currentUser.IsEditorRights)))
 				return Results.Json(new { error = "You do not have permission" }, statusCode: 403);
@@ -93,62 +135,74 @@ public static class EditingEbillEndpoints
 				.Select(c => c.FriendId)
 				.ToListAsync();
 
-			if (!allowedContacts.Contains(dto.UserId))
-				return Results.BadRequest(new { error = $"User {dto.UserId} is not in your contacts" });
-
-			if (ebill.Participants.Any(p => p.UserId == dto.UserId))
-				return Results.BadRequest(new { error = "User already participates" });
-
 			string scenario = ebill.Scenario.ToLower();
 
-			var newParticipant = new EbillParticipant
+			List<int> actuallyAdded = new(); 
+			List<int> alreadyParticipants = new();
+
+			foreach (var uid in dto.UserIds)
 			{
-				UserId = dto.UserId,
-				AssignedAmount = 0,
-				PaidAmount = 0,
-				Balance = 0,
-				IsAdminRights = false,
-				IsEditorRights = false,
-				PaymentStatus = "непогашений"
-			};
 
-			ebill.Participants.Add(newParticipant);
+				if (!allowedContacts.Contains(uid))
+					return Results.BadRequest(new { error = $"User {uid} is not in your contacts" });
 
-			switch (scenario)
+				if (ebill.Participants.Any(p => p.UserId == uid))
+				{
+					alreadyParticipants.Add(uid);
+					continue;
+				}
+
+				ebill.Participants.Add(new EbillParticipant
+				{
+					UserId = uid,
+					AssignedAmount = 0,
+					PaidAmount = 0,
+					Balance = 0,
+					IsAdminRights = false,
+					IsEditorRights = false,
+					PaymentStatus = "РЅРµРїРѕРіР°С€РµРЅРёР№"
+				});
+
+				actuallyAdded.Add(uid);
+			}
+
+			if (actuallyAdded.Count == 0)
+				return Results.BadRequest(new { error = "No participants were added", alreadyParticipants });
+
+			if (scenario == "СЂС–РІРЅРёР№ СЂРѕР·РїРѕРґС–Р»" || scenario == "СЃРїС–Р»СЊРЅС– РІРёС‚СЂР°С‚Рё")
 			{
-				case "рівний розподіл":
-				case "спільні витрати":
-					decimal equal = Math.Round(ebill.AmountOfDept / ebill.Participants.Count);
+				decimal equal = Math.Round(ebill.AmountOfDept / ebill.Participants.Count);
 
-					foreach (var p in ebill.Participants)
-					{
-						p.AssignedAmount = equal;
+				foreach (var p in ebill.Participants)
+				{
+					p.AssignedAmount = equal;
 
-						if (scenario == "спільні витрати")
-							p.Balance = p.PaidAmount;
-					}
-					break;
-
-				case "індивідуальні суми":
-
-					break;
+					if (scenario == "СЃРїС–Р»СЊРЅС– РІРёС‚СЂР°С‚Рё")
+						p.Balance = p.PaidAmount;
+				}
 			}
 
 			foreach (var p in ebill.Participants)
 			{
 				if (p.Balance >= p.AssignedAmount)
-					p.PaymentStatus = "погашений";
+					p.PaymentStatus = "РїРѕРіР°С€РµРЅРёР№";
 				else if (p.Balance == 0)
-					p.PaymentStatus = "непогашений";
+					p.PaymentStatus = "РЅРµРїРѕРіР°С€РµРЅРёР№";
 				else
-					p.PaymentStatus = "частково погашений";
+					p.PaymentStatus = "С‡Р°СЃС‚РєРѕРІРѕ РїРѕРіР°С€РµРЅРёР№";
 			}
 
 			ebill.UpdatedAt = DateTime.UtcNow;
 			await db.SaveChangesAsync();
 
-			return Results.Ok("Participant added");
-		});
+			return Results.Ok(new
+			{
+				message = "Participants processed",
+				added = actuallyAdded,
+				alreadyParticipants
+			});
+		})
+		.RequireAuthorization();
 		app.MapPut("/api/ebills/{ebillId:int}/participants/update",
 		async (int ebillId, UpdateParticipantDto dto, HttpContext http, ApplicationDbContext db) =>
 		{
@@ -180,17 +234,17 @@ public static class EditingEbillEndpoints
 
 				ebill.AmountOfDept = dto.AmountOfDept.Value;
 
-				if (scenario == "рівний розподіл" || scenario == "спільні витрати")
+				if (scenario == "СЂС–РІРЅРёР№ СЂРѕР·РїРѕРґС–Р»" || scenario == "СЃРїС–Р»СЊРЅС– РІРёС‚СЂР°С‚Рё")
 				{
 					decimal equal = Math.Round(ebill.AmountOfDept / ebill.Participants.Count);
 					foreach (var p in ebill.Participants)
 					{
 						p.AssignedAmount = equal;
-						if (scenario == "спільні витрати")
+						if (scenario == "СЃРїС–Р»СЊРЅС– РІРёС‚СЂР°С‚Рё")
 							p.Balance = p.PaidAmount;
 					}
 				}
-				else if (scenario == "індивідуальні суми")
+				else if (scenario == "С–РЅРґРёРІС–РґСѓР°Р»СЊРЅС– СЃСѓРјРё")
 				{
 					decimal sumAssigned = ebill.Participants.Sum(p => p.AssignedAmount);
 					if (sumAssigned > ebill.AmountOfDept)
@@ -217,7 +271,7 @@ public static class EditingEbillEndpoints
 					part.AssignedAmount = dto.AssignedAmount.Value;
 				}
 
-				if (dto.PaidAmount.HasValue && scenario == "спільні витрати")
+				if (dto.PaidAmount.HasValue && scenario == "СЃРїС–Р»СЊРЅС– РІРёС‚СЂР°С‚Рё")
 				{
 					if (dto.PaidAmount.Value < 0)
 						return Results.BadRequest(new { error = "PaidAmount must be non-negative." });
@@ -243,12 +297,12 @@ public static class EditingEbillEndpoints
 
 			foreach (var p in ebill.Participants)
 			{
-				if (p.Balance >= p.AssignedAmount) p.PaymentStatus = "погашений";
-				else if (p.Balance == 0) p.PaymentStatus = "непогашений";
-				else p.PaymentStatus = "частково погашений";
+				if (p.Balance >= p.AssignedAmount) p.PaymentStatus = "РїРѕРіР°С€РµРЅРёР№";
+				else if (p.Balance == 0) p.PaymentStatus = "РЅРµРїРѕРіР°С€РµРЅРёР№";
+				else p.PaymentStatus = "С‡Р°СЃС‚РєРѕРІРѕ РїРѕРіР°С€РµРЅРёР№";
 			}
 
-			ebill.Status = ebill.Participants.All(p => p.PaymentStatus == "погашений") ? "закритий" : "активний";
+			ebill.Status = ebill.Participants.All(p => p.PaymentStatus == "РїРѕРіР°С€РµРЅРёР№") ? "Р·Р°РєСЂРёС‚РёР№" : "Р°РєС‚РёРІРЅРёР№";
 			ebill.UpdatedAt = DateTime.UtcNow;
 
 			await db.SaveChangesAsync();
