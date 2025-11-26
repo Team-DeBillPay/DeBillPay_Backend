@@ -100,17 +100,99 @@ public static class CreateEbillEndpoints
             var userIdClaim = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (userIdClaim == null)
                 return Results.Unauthorized();
-
             int organizerId = int.Parse(userIdClaim);
             var organizer = await db.Users.FindAsync(organizerId);
             if (organizer == null)
                 return Results.NotFound("Organizer not found.");
-            var allowedContacts = await db.Contacts
-       .Where(c => c.UserId == organizerId && c.Status == "active")
-       .Select(c => c.FriendId)
-       .ToListAsync();
+            if (dto == null)
+                return Results.BadRequest("Request body is empty.");
 
-            var invalidParticipants = dto.Participants
+            if (string.IsNullOrWhiteSpace(dto.Name))
+                return Results.BadRequest("Name is required.");
+            if (string.IsNullOrWhiteSpace(dto.Currency))
+                return Results.BadRequest("Currency is required.");
+
+            string[] allowedCurrencies = { "UAH", "USD", "EUR" };
+
+            if (!allowedCurrencies.Contains(dto.Currency.ToUpper()))
+                return Results.BadRequest("Invalid currency. Allowed: UAH, USD, EUR.");
+
+            if (dto.Currency.Length != 3)
+                return Results.BadRequest("Currency must be a 3-letter ISO code.");
+
+            if (dto.AmountOfDept <= 0)
+                return Results.BadRequest("AmountOfDept must be greater than zero.");
+
+            if (dto.Participants == null || dto.Participants.Count == 0)
+                return Results.BadRequest("Participants list cannot be empty.");
+
+
+            var participants = dto.Participants.DistinctBy(p => p.UserId).ToList();
+
+            if (participants.Count != dto.Participants.Count)
+                return Results.BadRequest("Duplicate UserId in participants.");
+
+            string[] allowedScenarios =
+            {
+    "рівний розподіл",
+    "індивідуальні суми",
+    "спільні витрати"
+};
+
+            if (!allowedScenarios.Contains(dto.Scenario.ToLower()))
+                return Results.BadRequest("Invalid scenario. Allowed: рівний розподіл, індивідуальні суми, спільні витрати");
+
+            var participantIds = participants.Select(p => p.UserId).ToList();
+
+            var existingUserIds = await db.Users
+                .Where(u => participantIds.Contains(u.UserId))
+                .Select(u => u.UserId)
+                .ToListAsync();
+
+            var missingUsers = participantIds.Except(existingUserIds).ToList();
+
+            if (missingUsers.Any())
+                return Results.BadRequest($"These participants do not exist: {string.Join(", ", missingUsers)}");
+
+            if (dto.Scenario.ToLower() == "індивідуальні суми")
+            {
+                decimal totalAssigned = participants.Sum(x => x.Amount ?? 0);
+                if (totalAssigned != dto.AmountOfDept)
+                    return Results.BadRequest($"Total assigned amount ({totalAssigned}) does not match AmountOfDept ({dto.AmountOfDept}).");
+            }
+
+            if (dto.Scenario.ToLower() == "спільні витрати")
+            {
+                decimal totalPaid = participants.Sum(x => x.PaidAmount);
+                if (totalPaid != dto.AmountOfDept)
+                    return Results.BadRequest($"Total PaidAmount ({totalPaid}) must equal AmountOfDept ({dto.AmountOfDept}).");
+            }
+
+            if (dto.AmountOfDept < 0)
+                return Results.BadRequest("AmountOfDept cannot be negative.");
+
+            if (participants.Any(x => x.PaidAmount > dto.AmountOfDept))
+                return Results.BadRequest("PaidAmount cannot exceed AmountOfDept.");
+
+            foreach (var p in participants)
+            {
+                if (p.Amount < 0)
+                    return Results.BadRequest($"Assigned amount for user {p.UserId} cannot be negative.");
+
+                if (p.PaidAmount < 0)
+                    return Results.BadRequest($"Paid amount for user {p.UserId} cannot be negative.");
+            }
+
+            decimal totalAssignedAmount = participants.Sum(x => x.Amount ?? 0);
+            if (totalAssignedAmount > dto.AmountOfDept)
+                return Results.BadRequest($"Total AssignedAmount ({totalAssignedAmount}) cannot exceed AmountOfDept ({dto.AmountOfDept}).");
+
+            var allowedContacts = await db.Contacts
+                .Where(c => c.UserId == organizerId && c.Status == "active")
+                .Select(c => c.FriendId)
+                .ToListAsync();
+
+            var invalidParticipants = participants
                 .Where(p => p.UserId != organizerId && !allowedContacts.Contains(p.UserId))
                 .ToList();
 
@@ -132,7 +214,6 @@ public static class CreateEbillEndpoints
                 OrganizerId = organizerId
             };
 
-            var participants = dto.Participants.DistinctBy(p => p.UserId).ToList();
 
             switch (dto.Scenario.ToLower())
             {
