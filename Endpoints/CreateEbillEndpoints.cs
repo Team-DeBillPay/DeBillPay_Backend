@@ -11,10 +11,11 @@ using Microsoft.EntityFrameworkCore;
 using DeBillPay_Backend.DTOs;
 using DeBillPay_Backend.Services;
 using DeBillPay_Backend.Models.Validation;
+using Microsoft.AspNetCore.Mvc;
 
-public static class EbillEndpoints
+public static class CreateEbillEndpoints
 {
-    public static void MapEbillEndpoints(this IEndpointRouteBuilder app)
+    public static void MapCreateEbillEndpoints(this IEndpointRouteBuilder app)
     {
 
         app.MapGet("/api/ebills", async (HttpContext http, ApplicationDbContext db) =>
@@ -40,11 +41,13 @@ public static class EbillEndpoints
                     Participants = e.Participants.Select(p => new
                     {
                         p.UserId,
-                        p.PaymentStatus,
+                        p.ParticipantId,
                         p.AssignedAmount,
                         p.PaidAmount,
                         p.Balance,
-                        p.IsAdminRights
+                        p.PaymentStatus,
+                        p.IsAdminRights,
+                        p.IsEditorRights
                     })
                 })
                 .ToListAsync();
@@ -75,11 +78,13 @@ public static class EbillEndpoints
                     Participants = e.Participants.Select(p => new
                     {
                         p.UserId,
-                        p.PaymentStatus,
-                        p.AssignedAmount,
+                        p.ParticipantId,
+                    p.AssignedAmount,
                         p.PaidAmount,
                         p.Balance,
-                        p.IsAdminRights
+                        p.PaymentStatus,
+                        p.IsAdminRights,
+                        p.IsEditorRights
                     })
                 })
                 .FirstOrDefaultAsync();
@@ -147,7 +152,8 @@ public static class EbillEndpoints
                                 AssignedAmount = Math.Round(share),
                                 PaidAmount = 0,
                                 Balance = 0, // поки що 0
-                                IsAdminRights = false
+                                IsAdminRights = false,
+                                IsEditorRights = false
                             });
                         }
 
@@ -158,7 +164,8 @@ public static class EbillEndpoints
                             AssignedAmount = Math.Round(share),
                             PaidAmount = 0,
                             Balance = amount,
-                            IsAdminRights = true
+                            IsAdminRights = true,
+                            IsEditorRights = true
                         });
 
                         break;
@@ -177,7 +184,8 @@ public static class EbillEndpoints
                                 AssignedAmount = Math.Round(assigned),
                                 PaidAmount = paid,
                                 Balance = 0, // поки що 0
-                                IsAdminRights = p.UserId == organizerId
+                                IsAdminRights = p.UserId == organizerId,
+                                 IsEditorRights = p.UserId == organizerId
                             });
                         }
                         break;
@@ -198,7 +206,8 @@ public static class EbillEndpoints
                                 AssignedAmount = Math.Round(share),
                                 PaidAmount = p.PaidAmount,
                                 Balance = p.PaidAmount, // початковий баланс = сплачено
-                                IsAdminRights = p.UserId == organizerId
+                                IsAdminRights = p.UserId == organizerId,
+                                IsEditorRights = p.UserId == organizerId
                             });
                         }
                         break;
@@ -245,14 +254,47 @@ public static class EbillEndpoints
                 Participants = ebill.Participants.Select(p => new
                 {
                     p.UserId,
+                    p.ParticipantId,
                     p.AssignedAmount,
                     p.PaidAmount,
                     p.Balance,
                     p.PaymentStatus,
-                    p.IsAdminRights
+                    p.IsAdminRights,
+                     p.IsEditorRights
                 })
             });
         })
         .RequireAuthorization();
+        app.MapDelete("/api/ebills/delete{id:int}", async (int id, HttpContext http, ApplicationDbContext db) =>
+        {
+            var userIdClaim = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userIdClaim is null)
+                return Results.Json(
+    new { message = "Unauthorized" },
+    statusCode: StatusCodes.Status401Unauthorized
+);
+
+            int userId = int.Parse(userIdClaim);
+
+            var ebill = await db.Ebills
+                .Include(e => e.Participants)
+                .Include(e => e.Payments)
+                .Include(e => e.Comments)
+                .Include(e => e.Invitations)
+                .Include(e => e.Notifications)
+                .FirstOrDefaultAsync(e => e.EbillId == id);
+
+            if (ebill == null)
+                return Results.NotFound(new { message = "E-bill not found" });
+
+            if (ebill.OrganizerId != userId)
+                return Results.Forbid();
+
+            db.Ebills.Remove(ebill);
+            await db.SaveChangesAsync();
+
+            return Results.Ok(new { message = "E-bill successful delete" });
+        })
+.RequireAuthorization();
     }
 }
