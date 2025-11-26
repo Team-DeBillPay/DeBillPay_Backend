@@ -26,11 +26,9 @@ public static class EditingEbillEndpoints
 
 			int userIdInt = int.Parse(userId);
 
-			// 1. Перевірка порожнього списку
 			if (dto.Participants == null || dto.Participants.Count == 0)
 				return Results.BadRequest(new { error = "Participants list cannot be empty" });
 
-			// 2. Перевірка дублікатів
 			if (dto.Participants.Select(x => x.ParticipantId).Distinct().Count() != dto.Participants.Count)
 				return Results.BadRequest(new { error = "Duplicate ParticipantId values detected in request" });
 
@@ -41,14 +39,11 @@ public static class EditingEbillEndpoints
 			if (ebill is null)
 				return Results.NotFound(new { error = "E-bill not found" });
 
-			// 3. Перевірка, що user – організатор
 			if (ebill.OrganizerId != userIdInt)
 				return Results.Json(new { error = "Only organizer can update editor rights" }, statusCode: 403);
 
-			// Список проблем
 			var errors = new List<string>();
 
-			// Перевірки
 			foreach (var item in dto.Participants)
 			{
 				var participant = ebill.Participants
@@ -66,7 +61,6 @@ public static class EditingEbillEndpoints
 					continue;
 				}
 
-				// ❗ Нове правило: якщо IsEditorRights вже true — заборонити зміну
 				if (participant.IsEditorRights == true)
 				{
 					errors.Add($"Participant {item.ParticipantId} already has editor rights and cannot be modified");
@@ -74,7 +68,6 @@ public static class EditingEbillEndpoints
 				}
 			}
 
-			// Якщо знайшли хоч одну помилку → не оновлюємо базу
 			if (errors.Count > 0)
 			{
 				return Results.BadRequest(new
@@ -84,7 +77,6 @@ public static class EditingEbillEndpoints
 				});
 			}
 
-			// Усе ок — застосовуємо зміни
 			foreach (var item in dto.Participants)
 			{
 				var participant = ebill.Participants
