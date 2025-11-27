@@ -7,8 +7,11 @@ using DeBillPay_Backend.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using System.Text.Json;
+using DeBillPay_Backend.Configuration;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.Configure<LiqPayOptions>(builder.Configuration.GetSection("LiqPay"));
 
 builder.WebHost.UseUrls("http://0.0.0.0:5141");
 
@@ -26,6 +29,7 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddScoped<LiqPayService>();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "DeBillPay API", Version = "v1" });
@@ -136,4 +140,5 @@ app.MapInvitationEndpoints();
 app.MapUserEndpoints();
 app.MapEditingEbillEndpoints();
 app.MapCreateEbillEndpoints();
+app.MapPaymentEndpoints();
 app.Run();
