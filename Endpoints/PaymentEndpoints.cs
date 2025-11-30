@@ -1,3 +1,4 @@
+using System;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
@@ -28,6 +29,9 @@ public static class PaymentEndpoints
             if (userIdClaim is null)
                 return Results.Unauthorized();
 
+            if (request.EbillId <= 0)
+                return Results.BadRequest("Invalid EbillId.");
+
             var userId = int.Parse(userIdClaim.Value);
 
             var ebill = await db.Ebills
@@ -36,9 +40,18 @@ public static class PaymentEndpoints
             if (ebill is null)
                 return Results.NotFound("Ebill not found");
 
-            var amount = request.Amount ?? ebill.AmountOfDept;
+            var participant = await db.EbillParticipants
+                .FirstOrDefaultAsync(p => p.EbillId == request.EbillId && p.UserId == userId);
+
+            if (participant is null)
+                return Results.NotFound("Participant not found for this user and ebill.");
+
+            var amount = request.Amount ?? participant.Balance;
             if (amount <= 0)
                 return Results.BadRequest("Amount must be greater than zero.");
+
+            if (amount > participant.Balance)
+                return Results.BadRequest("Amount exceeds your remaining balance.");
 
             var orderId = $"ebill-{ebill.EbillId}-user-{userId}-{Guid.NewGuid():N}";
 
@@ -87,22 +100,74 @@ public static class PaymentEndpoints
             if (!liqPay.VerifySignature(data, signature))
                 return Results.Unauthorized();
 
-            var json = Encoding.UTF8.GetString(Convert.FromBase64String(data));
-            var callback = JsonSerializer.Deserialize<LiqPayCallbackDto>(json);
+            string json;
+            try
+            {
+                json = Encoding.UTF8.GetString(Convert.FromBase64String(data));
+            }
+            catch
+            {
+                return Results.BadRequest("Invalid base64 data.");
+            }
 
+            var callback = JsonSerializer.Deserialize<LiqPayCallbackDto>(json);
             if (callback is null || string.IsNullOrEmpty(callback.order_id))
                 return Results.BadRequest("Invalid callback data.");
 
             var payment = await db.Payments
+                .Include(p => p.Ebill)
                 .FirstOrDefaultAsync(p => p.TransactionReference == callback.order_id);
 
             if (payment is null)
                 return Results.NotFound("Payment not found.");
 
-            payment.Status = callback.status;
-            payment.TransactionDate = DateTime.UtcNow;
+            await using var tx = await db.Database.BeginTransactionAsync();
 
-            await db.SaveChangesAsync();
+            try
+            {
+                var alreadySuccess = payment.Status == "success";
+
+                payment.TransactionDate = DateTime.UtcNow;
+                payment.Status = callback.status;
+
+                if (callback.status == "success" && !alreadySuccess)
+                {
+                    var participant = await db.EbillParticipants
+                        .FirstOrDefaultAsync(p => p.EbillId == payment.EbillId && p.UserId == payment.UserId);
+
+                    if (participant is null)
+                    {
+                        await tx.RollbackAsync();
+                        return Results.NotFound("Participant record not found.");
+                    }
+
+                    participant.PaidAmount = Decimal.Round(participant.PaidAmount + payment.Amount, 2, MidpointRounding.AwayFromZero);
+                    participant.Balance = Decimal.Round(participant.AssignedAmount - participant.PaidAmount, 2, MidpointRounding.AwayFromZero);
+
+                    if (participant.Balance <= 0)
+                    {
+                        participant.Balance = 0;
+                        participant.PaymentStatus = "paid";
+                    }
+                    else
+                    {
+                        participant.PaymentStatus = "partial";
+                    }
+
+                    var anyRemaining = await db.EbillParticipants
+                        .AnyAsync(p => p.EbillId == payment.EbillId && p.Balance > 0);
+
+                    payment.Ebill.Status = anyRemaining ? "partial" : "paid";
+                }
+
+                await db.SaveChangesAsync();
+                await tx.CommitAsync();
+            }
+            catch
+            {
+                await tx.RollbackAsync();
+                throw;
+            }
 
             return Results.Ok();
         })
