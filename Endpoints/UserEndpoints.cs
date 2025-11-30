@@ -48,6 +48,25 @@ namespace DeBillPay_Backend.Endpoints
                 db.Users.Add(user);
                 await db.SaveChangesAsync();
 
+                // Створюємо notification
+                await NotificationService.CreateAsync(
+                    db,
+                    user.UserId,
+                    "welcome",
+                    $"Вітаємо, {user.FirstName}! Ваш акаунт успішно створено."
+                );
+
+                // Надсилаємо email, якщо є пошта
+                if (!string.IsNullOrWhiteSpace(user.Email))
+                {
+                    var config = app.Services.GetRequiredService<IConfiguration>();
+                    await EmailService.SendEmailAsync(
+                        user.Email,
+                        "Ласкаво просимо до DeBillPay",
+                        $"Привіт {user.FirstName},\n\nВаш акаунт успішно створено. Тепер ви можете користуватися нашим сервісом.",
+                        config
+                    );
+                }
                 return Results.Ok("User registered successfully");
             });
 

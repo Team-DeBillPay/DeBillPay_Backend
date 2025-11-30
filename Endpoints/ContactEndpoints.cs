@@ -22,9 +22,10 @@ namespace DeBillPay_Backend.Endpoints
             app.MapGet("/api/contacts", async (HttpContext http, ApplicationDbContext db) =>
             {
                 var userIdClaim = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                int userId = int.Parse(userIdClaim);
-                if (userIdClaim == null)
+                if (userIdClaim is null)
                     return Results.Unauthorized();
+
+                int userId = int.Parse(userIdClaim);
 
                 var contacts = await db.Contacts
                       .Where(c => c.UserId == userId)
@@ -69,8 +70,7 @@ namespace DeBillPay_Backend.Endpoints
             {
                 var normalized = query.Trim();
                 var userIdClaim = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-
-                if (userIdClaim == null)
+                if (userIdClaim is null)
                     return Results.Unauthorized();
 
                 int userId = int.Parse(userIdClaim);
@@ -104,7 +104,9 @@ namespace DeBillPay_Backend.Endpoints
                     return Results.Unauthorized();
 
                 int senderId = int.Parse(senderIdClaim);
-
+                var receiver = await db.Users.FindAsync(receiverId);
+                if (receiver is null)
+                    return Results.BadRequest("Receiver user does not exist");
                 if (senderId == receiverId)
                     return Results.BadRequest("You cannot add yourself");
 
@@ -124,15 +126,46 @@ namespace DeBillPay_Backend.Endpoints
                 };
 
                 db.Invitations.Add(invite);
-                await db.SaveChangesAsync();
 
+                var user = await db.Users.FindAsync(senderId);
+                if (user is null)
+                    return Results.BadRequest("Sender user record not found");
+
+                var notification = new Notification
+                {
+                    UserId = receiverId,
+                    Type = "friend_invitation",
+                    MessageText = $"Запрошення в друзі від {user.FirstName} {user.LastName}",
+                    Status = "unread",
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                db.Notifications.Add(notification);
+                await db.SaveChangesAsync();
+               
+                if (receiver != null && !string.IsNullOrWhiteSpace(receiver.Email))
+                {
+                    try
+                    {
+                        await EmailService.SendEmailAsync(
+                       receiver.Email,
+                       "Нове запрошення в друзі",
+                       $"Привіт {receiver.FirstName},\n\nВи отримали запрошення в друзі від {user.FirstName} {user.LastName}.\n\nПерейдіть у додаток, щоб прийняти або відхилити запрошення.",
+                       http.RequestServices.GetRequiredService<IConfiguration>()
+                   );
+                    }
+                    catch
+                    {
+
+                    }
+                }
                 return Results.Ok("Invitation sent");
             })
-.RequireAuthorization();
+ .RequireAuthorization();
             app.MapPost("/api/contacts/accept", async (HttpContext http, ApplicationDbContext db, int invitationId) =>
             {
                 var userIdClaim = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (userIdClaim == null)
+                if (userIdClaim is null)
                     return Results.Unauthorized();
 
                 int userId = int.Parse(userIdClaim);
@@ -170,7 +203,7 @@ namespace DeBillPay_Backend.Endpoints
             app.MapPost("/api/contacts/reject", async (HttpContext http, ApplicationDbContext db, int invitationId) =>
             {
                 var userIdClaim = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (userIdClaim == null)
+                if (userIdClaim is null)
                     return Results.Unauthorized();
 
                 int userId = int.Parse(userIdClaim);
@@ -190,7 +223,7 @@ namespace DeBillPay_Backend.Endpoints
             app.MapDelete("/api/contacts/delete", async (HttpContext http, ApplicationDbContext db, int friendId) =>
             {
                 var userIdClaim = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (userIdClaim == null)
+                if (userIdClaim is null)
                     return Results.Unauthorized();
 
                 int userId = int.Parse(userIdClaim);

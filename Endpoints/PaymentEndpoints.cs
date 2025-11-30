@@ -133,6 +133,7 @@ public static class PaymentEndpoints
                 if (callback.status == "success" && !alreadySuccess)
                 {
                     var participant = await db.EbillParticipants
+                        .Include(p => p.User)
                         .FirstOrDefaultAsync(p => p.EbillId == payment.EbillId && p.UserId == payment.UserId);
 
                     if (participant is null)
@@ -144,14 +145,42 @@ public static class PaymentEndpoints
                     participant.PaidAmount = Decimal.Round(participant.PaidAmount + payment.Amount, 2, MidpointRounding.AwayFromZero);
                     participant.Balance = Decimal.Round(participant.AssignedAmount - participant.PaidAmount, 2, MidpointRounding.AwayFromZero);
 
+                    string historyAction;
+                    string historyMessage;
+                    string emailSubject = "Статус вашого платежу DeBillPay";
+                    string emailBody;
+
                     if (participant.Balance <= 0)
                     {
                         participant.Balance = 0;
                         participant.PaymentStatus = "paid";
+
+                        historyAction = "full_payment";
+                        historyMessage = $"{participant.User.FirstName} повністю погасив(-ла) свій борг";
+
+                        emailBody = $"Привіт {participant.User.FirstName},\n\nВи повністю погасили свій борг по чеку \"{payment.Ebill.Name}\". Дякуємо за своєчасну оплату!";
                     }
                     else
                     {
                         participant.PaymentStatus = "partial";
+
+                        historyAction = "partial_payment";
+                        historyMessage = $"{participant.User.FirstName} частково погасив(-ла) свій борг";
+
+                        emailBody = $"Привіт {participant.User.FirstName},\n\nВи частково погасили свій борг по чеку \"{payment.Ebill.Name}\". Залишок до оплати: {participant.Balance:C}.";
+                    }
+
+                    await EbillHistoryService.AddAsync(db, payment.EbillId, participant.UserId, historyAction, historyMessage);
+
+                    if (!string.IsNullOrWhiteSpace(participant.User.Email))
+                    {
+                        var config = app.Services.GetRequiredService<IConfiguration>();
+                        await EmailService.SendEmailAsync(
+                            participant.User.Email,
+                            emailSubject,
+                            emailBody,
+                            config
+                        );
                     }
 
                     var anyRemaining = await db.EbillParticipants
