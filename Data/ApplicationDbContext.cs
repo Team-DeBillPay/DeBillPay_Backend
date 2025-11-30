@@ -20,7 +20,7 @@ namespace DeBillPay_Backend.Data
         public DbSet<Contact> Contacts { get; set; }
         public DbSet<Invitation> Invitations { get; set; }
         public DbSet<Notification> Notifications { get; set; }
-
+        public DbSet<EbillHistory> EbillHistories { get; set; }
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);

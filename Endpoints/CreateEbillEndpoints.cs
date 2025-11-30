@@ -324,7 +324,49 @@ public static class CreateEbillEndpoints
                             : "активний";
             db.Ebills.Add(ebill);
             await db.SaveChangesAsync();
+            await EbillHistoryService.AddAsync(
+    db,
+    ebill.EbillId,
+    organizerId,
+    "created",
+    $"{organizer.FirstName} створив(-ла) чек"
+);
+            foreach (var participant in ebill.Participants)
+            {
 
+                if (participant.UserId == organizerId)
+                    continue;
+                var addedUser = await db.Users.FindAsync(participant.UserId);
+                if (addedUser != null)
+                {
+                    await EbillHistoryService.AddAsync(
+                        db,
+                        ebill.EbillId,
+                        organizerId,
+                        "added_participant",
+                        $"{organizer.FirstName} додав(-ла) {addedUser.FirstName} {addedUser.LastName} до чеку"
+                    );
+                }
+                await NotificationService.CreateAsync(
+                    db,
+                    participant.UserId,
+                    "added_to_ebill",
+                    $"Вас додали до чеку: \"{ebill.Name}\"",
+                    ebill.EbillId
+                );
+
+                var user = await db.Users.FindAsync(participant.UserId);
+                if (user != null && !string.IsNullOrWhiteSpace(user.Email))
+                {
+
+                    await EmailService.SendEmailAsync(
+                        user.Email,
+                        "Вас додали до чеку", 
+                        $"Привіт {user.FirstName},\n\nВас додали до чеку \"{ebill.Name}\".\n\nПерейдіть у додаток, щоб переглянути деталі.", 
+                        http.RequestServices.GetRequiredService<IConfiguration>() 
+                    );
+                }
+            }
             return Results.Ok(new
             {
                 ebill.EbillId,
@@ -369,7 +411,10 @@ public static class CreateEbillEndpoints
                 return Results.NotFound(new { message = "E-bill not found" });
 
             if (ebill.OrganizerId != userId)
-                return Results.Forbid();
+                return Results.Json(
+                    new { message = "You do not have permission to delete" },
+                    statusCode: StatusCodes.Status403Forbidden
+                );
 
             db.Ebills.Remove(ebill);
             await db.SaveChangesAsync();

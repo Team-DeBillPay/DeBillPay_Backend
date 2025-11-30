@@ -23,9 +23,10 @@ namespace DeBillPay_Backend.Endpoints
             app.MapGet("/api/users/invitationsContacts", async (HttpContext http, ApplicationDbContext db) =>
             {
                 var userIdClaim = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                int userId = int.Parse(userIdClaim);
                 if (userIdClaim == null)
                     return Results.Unauthorized();
+
+                int userId = int.Parse(userIdClaim);
 
                 var invitations = await db.Invitations
                        .Where(i => i.ReceiverId == userId && i.Status == "pending")

@@ -140,5 +140,8 @@ app.MapInvitationEndpoints();
 app.MapUserEndpoints();
 app.MapEditingEbillEndpoints();
 app.MapCreateEbillEndpoints();
+app.MapNotificationEndpoints();
+app.MapEbillHistoryEndpoints();
+
 app.MapPaymentEndpoints();
 app.Run();
