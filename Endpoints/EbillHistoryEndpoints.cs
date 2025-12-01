@@ -43,11 +43,7 @@ namespace DeBillPay_Backend.Endpoints
 						h.EbillId,
 						h.UserId,
 						Action = h.ActionType,
-						Message = h.Message.Contains(fullName)
-							? (h.ActionType == "full_payment" || h.ActionType == "partial_payment"
-								? h.Message.Replace(fullName, "ви")
-								: h.Message.Replace(fullName, "вас"))
-							: h.Message,
+						Message = h.Message,
 						h.CreatedAt
 					})
 					.ToListAsync();

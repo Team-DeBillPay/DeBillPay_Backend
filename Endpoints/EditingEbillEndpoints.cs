@@ -206,10 +206,11 @@ public static class EditingEbillEndpoints
 			});
 		})
 
-		.RequireAuthorization();
+        .RequireAuthorization();
         app.MapPut("/api/ebills/{ebillId:int}/participants/update",
         async (int ebillId, UpdateParticipantDto dto, HttpContext http, ApplicationDbContext db) =>
         {
+            List<string> changedFields = new();
             var userIdClaim = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (userIdClaim is null)
                 return Results.Json(new { error = "Unauthorized" }, statusCode: 401);
@@ -239,8 +240,9 @@ public static class EditingEbillEndpoints
                 if (string.IsNullOrWhiteSpace(dto.Name))
                     return Results.BadRequest(new { error = "Name cannot be empty." });
 
-                if (dto.Name != ebill.Name)
+                if (dto.Name != null && dto.Name != ebill.Name)
                 {
+                    changedFields.Add($"назву (\"{ebill.Name}\" → \"{dto.Name}\")");
                     ebill.Name = dto.Name;
                     userMadeChanges = true;
                 }
@@ -252,8 +254,9 @@ public static class EditingEbillEndpoints
                 if (string.IsNullOrWhiteSpace(dto.Description))
                     return Results.BadRequest(new { error = "Description cannot be empty." });
 
-                if (dto.Description != ebill.Description)
+                if (dto.Description != null && dto.Description != ebill.Description)
                 {
+                    changedFields.Add($"опис ({ebill.Description} → {dto.Description})");
                     ebill.Description = dto.Description;
                     userMadeChanges = true;
                 }
@@ -262,9 +265,14 @@ public static class EditingEbillEndpoints
             // --- Оновлення суми боргу ---
             if (dto.AmountOfDept.HasValue)
             {
+                if (scenario == "індивідуальні суми")
+                {
+                    return Results.BadRequest(new { error = "In the 'individual amounts' scenario, the total amount is calculated automatically and cannot be changed manually." });
+                }
                 if (dto.AmountOfDept.Value < 0)
                     return Results.BadRequest(new { error = "AmountOfDept must be non-negative" });
-
+                if (dto.AmountOfDept.Value != ebill.AmountOfDept)
+                    changedFields.Add($"загальну суму ({ebill.AmountOfDept} → {dto.AmountOfDept.Value})");
                 ebill.AmountOfDept = dto.AmountOfDept.Value;
                 userMadeChanges = true;
 
@@ -301,6 +309,7 @@ public static class EditingEbillEndpoints
                 // Заборона зміни AssignedAmount для певних сценаріїв
                 if (dto.AssignedAmount.HasValue)
                 {
+
                     if (scenario == "спільні витрати" || scenario == "рівний розподіл")
                     {
                         return Results.BadRequest(new { error = $"Cannot manually edit AssignedAmount in '{scenario}' scenario." });
@@ -308,14 +317,19 @@ public static class EditingEbillEndpoints
 
                     if (dto.AssignedAmount.Value < 0)
                         return Results.BadRequest(new { error = "AssignedAmount must be non-negative" });
-
-                    part.AssignedAmount = dto.AssignedAmount.Value;
-                    userMadeChanges = true;
-
-                    // --- FIX for "індивідуальні суми" ---
-                    if (scenario == "індивідуальні суми")
+                    if (dto.AssignedAmount.Value != part.AssignedAmount)
                     {
-                        ebill.AmountOfDept = ebill.Participants.Sum(p => p.AssignedAmount);
+                        changedFields.Add(
+                            $"суму, яку має сплатити учасник {part.User.FirstName} {part.User.LastName} ({part.AssignedAmount} → {dto.AssignedAmount.Value})"
+                        );
+                        part.AssignedAmount = dto.AssignedAmount.Value;
+                        userMadeChanges = true;
+
+                        // --- FIX for "індивідуальні суми" ---
+                        if (scenario == "індивідуальні суми")
+                        {
+                            ebill.AmountOfDept = ebill.Participants.Sum(p => p.AssignedAmount);
+                        }
                     }
                 }
 
@@ -329,7 +343,12 @@ public static class EditingEbillEndpoints
 
                     if (dto.PaidAmount.Value < 0)
                         return Results.BadRequest(new { error = "PaidAmount must be non-negative." });
-
+                    if (dto.PaidAmount.Value != part.PaidAmount)
+                    {
+                        changedFields.Add(
+                            $"суму, яку витратив учасник {part.User.FirstName} {part.User.LastName} ({part.PaidAmount} → {dto.PaidAmount.Value})"
+                        );
+                    }
                     decimal othersPaid = ebill.Participants
                         .Where(p => p.ParticipantId != part.ParticipantId)
                         .Sum(p => p.PaidAmount);
@@ -347,7 +366,12 @@ public static class EditingEbillEndpoints
                             decimal equal = Math.Round(ebill.AmountOfDept / ebill.Participants.Count);
                             foreach (var p in ebill.Participants)
                             {
-                                p.AssignedAmount = equal;
+                                if (p.AssignedAmount != equal)
+{
+    changedFields.Add($"суму, яку має сплатити учасник {p.User.FirstName} {part.User.LastName} ({p.AssignedAmount} → {equal})");
+    p.AssignedAmount = equal;
+    userMadeChanges = true;
+}
                                 if (scenario == "спільні витрати")
                                     p.Balance = p.PaidAmount;
                             }
@@ -377,42 +401,31 @@ public static class EditingEbillEndpoints
             ebill.Status = ebill.Participants.All(p => p.PaymentStatus == "погашений") ? "закритий" : "активний";
             ebill.UpdatedAt = DateTime.UtcNow;
 
-            if (userMadeChanges)
-            {
-                User? actorUser = null;
-
-                if (currentUser != null)
-                {
-                    actorUser = currentUser.User;
-                }
-                else
-                {
-                    if (ebill.OrganizerId == userId)
-                        actorUser = await db.Users.FirstOrDefaultAsync(u => u.UserId == userId);
-                }
-
-                if (actorUser == null)
-                    return Results.BadRequest(new { error = "User record missing" });
-
-                try
-                {
-                    await EbillHistoryService.AddAsync(
-    db,
-    ebillId,
-    userId,
-    "updated",
-    $"{actorUser.FirstName} оновив(-ла) чек"
-);
-                }
-                catch (Exception ex)
-                {
-                    return Results.Problem($"Failed to log changes: {ex.Message}");
-                }
-            }
-
             try
             {
-                await db.SaveChangesAsync();
+                    if (userMadeChanges)
+                    {
+                        var actorUser = await db.Users.FirstOrDefaultAsync(u => u.UserId == userId);
+                        if (actorUser == null)
+                            return Results.BadRequest(new { error = "User record missing" });
+
+                        string details;
+
+                        if (changedFields.Count == 1)
+                            details = $"{actorUser.FirstName} {actorUser.LastName} оновив(-ла) {changedFields[0]}";
+                        else
+                            details = $"{actorUser.FirstName} {actorUser.LastName} оновив(-ла): " + string.Join(", ", changedFields);
+
+                        await EbillHistoryService.AddAsync(
+                            db,
+                            ebillId,
+                            userId,
+                            "updated",
+                            details
+                        );
+                    }
+
+                    await db.SaveChangesAsync();
             }
             catch (DbUpdateException dbEx)
             {
