@@ -357,18 +357,31 @@ public static class EditingEbillEndpoints
             // --- Лог змін ---
             if (userMadeChanges)
             {
-                if (currentUser?.User == null)
+                User? actorUser = null;
+
+                if (currentUser != null)
+                {
+                    actorUser = currentUser.User;
+                }
+                else
+                {
+                    // Якщо організатор — дістаємо його з БД
+                    if (ebill.OrganizerId == userId)
+                        actorUser = await db.Users.FirstOrDefaultAsync(u => u.UserId == userId);
+                }
+
+                if (actorUser == null)
                     return Results.BadRequest(new { error = "User record missing" });
 
                 try
                 {
                     await EbillHistoryService.AddAsync(
-                        db,
-                        ebillId,
-                        userId,
-                        "updated",
-                        $"{currentUser.User.FirstName} оновив(-ла) чек"
-                    );
+    db,
+    ebillId,
+    userId,
+    "updated",
+    $"{actorUser.FirstName} оновив(-ла) чек"
+);
                 }
                 catch (Exception ex)
                 {
@@ -449,15 +462,31 @@ public static class EditingEbillEndpoints
         }
 
         ebill.UpdatedAt = DateTime.UtcNow;
-        if (currentUser?.User == null)
+        User? actorUser = null;
+
+        if (currentUser != null)
+        {
+            actorUser = currentUser.User;
+        }
+        else
+        {
+            // Якщо діє організатор — беремо його з Users
+            if (ebill.OrganizerId == userId)
+                actorUser = await db.Users.FirstOrDefaultAsync(u => u.UserId == userId);
+        }
+
+        if (actorUser == null)
             return Results.BadRequest(new { error = "User record missing" });
+
+        // Логування
         await EbillHistoryService.AddAsync(
             db,
             ebillId,
             userId,
             "removed_participant",
-            $"{currentUser.User.FirstName} видалив(-ла) {participantToRemove.User.FirstName} з чеку"
+            $"{actorUser.FirstName} видалив(-ла) {participantToRemove.User.FirstName} з чеку"
         );
+
 
         await db.SaveChangesAsync();
 
