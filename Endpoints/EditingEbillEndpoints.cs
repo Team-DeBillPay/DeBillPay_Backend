@@ -311,6 +311,12 @@ public static class EditingEbillEndpoints
 
                     part.AssignedAmount = dto.AssignedAmount.Value;
                     userMadeChanges = true;
+
+                    // --- FIX for "індивідуальні суми" ---
+                    if (scenario == "індивідуальні суми")
+                    {
+                        ebill.AmountOfDept = ebill.Participants.Sum(p => p.AssignedAmount);
+                    }
                 }
 
                 // Заборона зміни PaidAmount для певних сценаріїв
@@ -352,6 +358,13 @@ public static class EditingEbillEndpoints
                     part.PaidAmount = dto.PaidAmount.Value;
                     part.Balance = part.PaidAmount;
                     userMadeChanges = true;
+
+                    // --- FIX: перерахунок AmountOfDept для "спільні витрати" ---
+                    if (scenario == "спільні витрати")
+                    {
+                        ebill.AmountOfDept = ebill.Participants.Sum(x => x.PaidAmount);
+                    }
+
                 }
             }
 

@@ -104,16 +104,17 @@ namespace DeBillPay_Backend.Data
                 .WithMany(e => e.Invitations)
                 .HasForeignKey(i => i.EbillId);
 
-            // NOTIFICATIONS
             modelBuilder.Entity<Notification>()
-                .HasOne(n => n.User)
-                .WithMany(u => u.Notifications)
-                .HasForeignKey(n => n.UserId);
+     .HasOne(n => n.Ebill)
+     .WithMany(e => e.Notifications)
+     .HasForeignKey(n => n.EbillId)
+     .OnDelete(DeleteBehavior.Cascade);
 
-            modelBuilder.Entity<Notification>()
-                .HasOne(n => n.Ebill)
-                .WithMany(e => e.Notifications)
-                .HasForeignKey(n => n.EbillId)
+            // EbillHistory cascade
+            modelBuilder.Entity<EbillHistory>()
+                .HasOne<Ebill>()
+                .WithMany(e => e.History)
+                .HasForeignKey(h => h.EbillId)
                 .OnDelete(DeleteBehavior.Cascade);
         }
     }

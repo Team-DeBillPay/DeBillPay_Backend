@@ -20,4 +20,6 @@ public class Ebill
     public ICollection<Comment> Comments { get; set; } = new List<Comment>();
     public ICollection<Invitation> Invitations { get; set; } = new List<Invitation>();
     public ICollection<Notification> Notifications { get; set; } = new List<Notification>();
+    public ICollection<EbillHistory> History { get; set; } = new List<EbillHistory>();
+
 }
