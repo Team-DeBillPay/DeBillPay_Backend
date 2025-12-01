@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Cryptography.KeyDerivation;
+ï»¿using Microsoft.AspNetCore.Cryptography.KeyDerivation;
 using Microsoft.Extensions.Configuration;
 using System.Security.Cryptography;
 using System.Text;
@@ -14,10 +14,10 @@ using DeBillPay_Backend.Models.Validation;
 
 namespace DeBillPay_Backend.Endpoints
 {
-	public static class NotificationEndpoints
-	{
-		public static void MapNotificationEndpoints(this WebApplication app)
-		{
+    public static class NotificationEndpoints
+    {
+        public static void MapNotificationEndpoints(this WebApplication app)
+        {
 
             app.MapGet("/api/notifications/all", async (HttpContext http, ApplicationDbContext db) =>
             {
@@ -36,55 +36,39 @@ namespace DeBillPay_Backend.Endpoints
                         Status = n.Status,
                         CreatedAt = n.CreatedAt
                     })
-                    .ToListAsync();
-
-                var invitations = await db.Invitations
-                    .Where(i => i.ReceiverId == userId)
-                    .Include(i => i.Sender)
-                    .Select(i => new
-                    {
-                        Type = "friend_invitation",
-                        Message = $"Çàïðîøåííÿ â äðóç³ â³ä {i.Sender.FirstName} {i.Sender.LastName}",
-                        Status = i.Status,
-                        CreatedAt = i.CreatedAt
-                    })
-                    .ToListAsync();
-
-                var all = notifications
-                    .Concat(invitations) 
                     .OrderByDescending(x => x.CreatedAt)
-                    .ToList();
+                    .ToListAsync();
 
-                return Results.Ok(all); 
+                return Results.Ok(notifications);
             });
-			app.MapPut("/api/notifications/mark-read/{notificationId:int}",
-	async (int notificationId, HttpContext http, ApplicationDbContext db) =>
-	{
-		var userIdClaim = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-		if (userIdClaim is null)
-			return Results.Unauthorized();
+            app.MapPut("/api/notifications/mark-read/{notificationId:int}",
+    async (int notificationId, HttpContext http, ApplicationDbContext db) =>
+    {
+        var userIdClaim = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (userIdClaim is null)
+            return Results.Unauthorized();
 
-		int userId = int.Parse(userIdClaim);
+        int userId = int.Parse(userIdClaim);
 
-		var notification = await db.Notifications
-			.FirstOrDefaultAsync(n => n.NotificationId == notificationId && n.UserId == userId);
+        var notification = await db.Notifications
+            .FirstOrDefaultAsync(n => n.NotificationId == notificationId && n.UserId == userId);
 
-		if (notification is null)
-			return Results.NotFound(new { error = "Notification not found" });
+        if (notification is null)
+            return Results.NotFound(new { error = "Notification not found" });
 
-		if (notification.Status == "read")
-		{
-			return Results.Ok(new { message = "Already read" });
-		}
+        if (notification.Status == "read")
+        {
+            return Results.Ok(new { message = "Already read" });
+        }
 
-		notification.Status = "read";
-		await db.SaveChangesAsync();
+        notification.Status = "read";
+        await db.SaveChangesAsync();
 
-		return Results.Ok(new { message = "Notification marked as read" });
-	})
+        return Results.Ok(new { message = "Notification marked as read" });
+    })
 .RequireAuthorization();
 
-		}
-	}
+        }
+    }
 }
 
