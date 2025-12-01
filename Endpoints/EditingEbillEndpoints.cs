@@ -206,7 +206,7 @@ public static class EditingEbillEndpoints
 			});
 		})
 
-		.RequireAuthorization();
+        .RequireAuthorization();
         app.MapPut("/api/ebills/{ebillId:int}/participants/update",
         async (int ebillId, UpdateParticipantDto dto, HttpContext http, ApplicationDbContext db) =>
         {
@@ -377,41 +377,23 @@ public static class EditingEbillEndpoints
             ebill.Status = ebill.Participants.All(p => p.PaymentStatus == "погашений") ? "закритий" : "активний";
             ebill.UpdatedAt = DateTime.UtcNow;
 
-            if (userMadeChanges)
-            {
-                User? actorUser = null;
-
-                if (currentUser != null)
-                {
-                    actorUser = currentUser.User;
-                }
-                else
-                {
-                    if (ebill.OrganizerId == userId)
-                        actorUser = await db.Users.FirstOrDefaultAsync(u => u.UserId == userId);
-                }
-
-                if (actorUser == null)
-                    return Results.BadRequest(new { error = "User record missing" });
-
-                try
-                {
-                    await EbillHistoryService.AddAsync(
-    db,
-    ebillId,
-    userId,
-    "updated",
-    $"{actorUser.FirstName} оновив(-ла) чек"
-);
-                }
-                catch (Exception ex)
-                {
-                    return Results.Problem($"Failed to log changes: {ex.Message}");
-                }
-            }
-
             try
             {
+                if (userMadeChanges)
+                {
+                    var actorUser = await db.Users.FirstOrDefaultAsync(u => u.UserId == userId);
+                    if (actorUser == null)
+                        return Results.BadRequest(new { error = "User record missing" });
+
+                    await EbillHistoryService.AddAsync(
+                        db,
+                        ebillId,
+                        userId,
+                        "updated",
+                        $"{actorUser.FirstName} оновив(-ла) чек"
+                    );
+                }
+
                 await db.SaveChangesAsync();
             }
             catch (DbUpdateException dbEx)
