@@ -61,11 +61,6 @@ public static class EditingEbillEndpoints
 					continue;
 				}
 
-				if (participant.IsEditorRights == true)
-				{
-					errors.Add($"Participant {item.ParticipantId} already has editor rights and cannot be modified");
-					continue;
-				}
 			}
 
 			if (errors.Count > 0)
@@ -110,15 +105,16 @@ public static class EditingEbillEndpoints
 			if (dto.UserIds.Count != dto.UserIds.Distinct().Count())
 				return Results.BadRequest(new { error = "Duplicate user IDs detected in request" });
 
-			var ebill = await db.Ebills
-				.Include(e => e.Participants)
-				.FirstOrDefaultAsync(e => e.EbillId == ebillId);
+            var ebill = await db.Ebills
+    .Include(e => e.Participants)
+        .ThenInclude(p => p.User)
+    .FirstOrDefaultAsync(e => e.EbillId == ebillId);
 
-			if (ebill is null)
+            if (ebill is null)
 				return Results.NotFound(new { error = "E-bill not found" });
 
-			var currentUser = ebill.Participants.FirstOrDefault(p => p.UserId == userId);
-			if (ebill.OrganizerId != userId &&
+            var currentUser = ebill.Participants.FirstOrDefault(p => p.UserId == userId);
+            if (ebill.OrganizerId != userId &&
 				(currentUser == null || (!currentUser.IsAdminRights && !currentUser.IsEditorRights)))
 				return Results.Json(new { error = "You do not have permission" }, statusCode: 403);
 
@@ -159,7 +155,9 @@ public static class EditingEbillEndpoints
                 var addedUser = await db.Users.FindAsync(uid);
                 if (addedUser == null)
                     return Results.BadRequest(new { error = $"User {uid} not found" });
-                if (currentUser?.User == null)
+                var actor = await db.Users.FindAsync(userId);
+
+                if (actor == null)
                     return Results.BadRequest(new { error = "User record missing" });
 
                 await EbillHistoryService.AddAsync(
@@ -167,7 +165,7 @@ public static class EditingEbillEndpoints
                     ebillId,
                     userId,
                     "added_participant",
-                    $"{currentUser.User.FirstName} додав(-ла) {addedUser.FirstName} до чеку"
+                    $"{actor.FirstName} додав(-ла) {addedUser.FirstName} до чеку"
                 );
             }
 
@@ -235,17 +233,30 @@ public static class EditingEbillEndpoints
 
             bool userMadeChanges = false;
 
-            // --- Оновлення назви та опису ---
-            if (!string.IsNullOrWhiteSpace(dto.Name) && dto.Name != ebill.Name)
+            // --- Оновлення назви ---
+            if (dto.Name != null)
             {
-                ebill.Name = dto.Name;
-                userMadeChanges = true;
+                if (string.IsNullOrWhiteSpace(dto.Name))
+                    return Results.BadRequest(new { error = "Name cannot be empty." });
+
+                if (dto.Name != ebill.Name)
+                {
+                    ebill.Name = dto.Name;
+                    userMadeChanges = true;
+                }
             }
 
-            if (!string.IsNullOrWhiteSpace(dto.Description) && dto.Description != ebill.Description)
+
+            if (dto.Description != null)
             {
-                ebill.Description = dto.Description;
-                userMadeChanges = true;
+                if (string.IsNullOrWhiteSpace(dto.Description))
+                    return Results.BadRequest(new { error = "Description cannot be empty." });
+
+                if (dto.Description != ebill.Description)
+                {
+                    ebill.Description = dto.Description;
+                    userMadeChanges = true;
+                }
             }
 
             // --- Оновлення суми боргу ---
@@ -287,8 +298,14 @@ public static class EditingEbillEndpoints
                 if (part == null)
                     return Results.BadRequest(new { error = "Participant not found" });
 
+                // Заборона зміни AssignedAmount для певних сценаріїв
                 if (dto.AssignedAmount.HasValue)
                 {
+                    if (scenario == "спільні витрати" || scenario == "рівний розподіл")
+                    {
+                        return Results.BadRequest(new { error = $"Cannot manually edit AssignedAmount in '{scenario}' scenario." });
+                    }
+
                     if (dto.AssignedAmount.Value < 0)
                         return Results.BadRequest(new { error = "AssignedAmount must be non-negative" });
 
@@ -296,8 +313,14 @@ public static class EditingEbillEndpoints
                     userMadeChanges = true;
                 }
 
-                if (dto.PaidAmount.HasValue && scenario == "спільні витрати")
+                // Заборона зміни PaidAmount для певних сценаріїв
+                if (dto.PaidAmount.HasValue)
                 {
+                    if (scenario == "рівний розподіл" || scenario == "індивідуальні суми")
+                    {
+                        return Results.BadRequest(new { error = $"Cannot manually edit PaidAmount in '{scenario}' scenario." });
+                    }
+
                     if (dto.PaidAmount.Value < 0)
                         return Results.BadRequest(new { error = "PaidAmount must be non-negative." });
 
