@@ -113,7 +113,8 @@ namespace DeBillPay_Backend.Data
             modelBuilder.Entity<Notification>()
                 .HasOne(n => n.Ebill)
                 .WithMany(e => e.Notifications)
-                .HasForeignKey(n => n.EbillId);
+                .HasForeignKey(n => n.EbillId)
+                .OnDelete(DeleteBehavior.Cascade);
         }
     }
 }
