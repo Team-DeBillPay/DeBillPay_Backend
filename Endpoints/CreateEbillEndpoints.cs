@@ -148,8 +148,8 @@ public static class CreateEbillEndpoints
                 .Where(u => participantIds.Contains(u.UserId))
                 .Select(u => u.UserId)
                 .ToListAsync();
-
-            var missingUsers = participantIds.Except(existingUserIds).ToList();
+           
+                var missingUsers = participantIds.Except(existingUserIds).ToList();
 
             if (missingUsers.Any())
                 return Results.BadRequest($"These participants do not exist: {string.Join(", ", missingUsers)}");
@@ -157,15 +157,16 @@ public static class CreateEbillEndpoints
             if (dto.Scenario.ToLower() == "індивідуальні суми")
             {
                 decimal totalAssigned = participants.Sum(x => x.Amount ?? 0);
-                if (totalAssigned != dto.AmountOfDept)
-                    return Results.BadRequest($"Total assigned amount ({totalAssigned}) does not match AmountOfDept ({dto.AmountOfDept}).");
+                dto.AmountOfDept = totalAssigned; // Автоматично виставляємо правильну суму
             }
 
             if (dto.Scenario.ToLower() == "спільні витрати")
             {
+                // Автоматично визначаємо загальну суму
                 decimal totalPaid = participants.Sum(x => x.PaidAmount);
-                if (totalPaid != dto.AmountOfDept)
-                    return Results.BadRequest($"Total PaidAmount ({totalPaid}) must equal AmountOfDept ({dto.AmountOfDept}).");
+
+                // Переписуємо AmountOfDept на правильний
+                dto.AmountOfDept = totalPaid;
             }
 
             if (dto.AmountOfDept < 0)
@@ -254,21 +255,23 @@ public static class CreateEbillEndpoints
 
                 case "індивідуальні суми":
                     {
+                        // 1️⃣ Рахуємо правильну суму
+                        decimal totalAssigned = participants.Sum(p => p.Amount ?? 0);
+                        ebill.AmountOfDept = totalAssigned; // 2️⃣ Переписуємо AmountOfDept
+
                         foreach (var p in participants)
                         {
-                            var assigned = p.Amount ?? 0;
-                            var paid = p.PaidAmount;
-
                             ebill.Participants.Add(new EbillParticipant
                             {
                                 UserId = p.UserId,
-                                AssignedAmount = Math.Round(assigned),
-                                PaidAmount = paid,
-                                Balance = 0, // поки що 0
+                                AssignedAmount = Math.Round(p.Amount ?? 0),
+                                PaidAmount = p.PaidAmount,
+                                Balance = p.PaidAmount,
                                 IsAdminRights = p.UserId == organizerId,
-                                 IsEditorRights = p.UserId == organizerId
+                                IsEditorRights = p.UserId == organizerId
                             });
                         }
+
                         break;
                     }
 
@@ -277,7 +280,12 @@ public static class CreateEbillEndpoints
                         if (participants.Count == 0)
                             return Results.BadRequest("No participants provided.");
 
-                        decimal share = dto.AmountOfDept / participants.Count;
+                        decimal totalPaid = participants.Sum(x => x.PaidAmount);
+                        decimal share = participants.Count > 0
+                            ? totalPaid / participants.Count
+                            : 0;
+
+                        ebill.AmountOfDept = totalPaid;
 
                         foreach (var p in participants)
                         {
@@ -388,6 +396,7 @@ public static class CreateEbillEndpoints
             });
         })
         .RequireAuthorization();
+
         app.MapDelete("/api/ebills/delete{id:int}", async (int id, HttpContext http, ApplicationDbContext db) =>
         {
             var userIdClaim = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;

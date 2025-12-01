@@ -331,12 +331,23 @@ public static class EditingEbillEndpoints
                     decimal maxAllowed = ebill.AmountOfDept - othersPaid;
 
                     if (dto.PaidAmount.Value > maxAllowed)
-                        return Results.BadRequest(new
+                    {
+                        ebill.AmountOfDept = othersPaid + dto.PaidAmount.Value;
+
+                        userMadeChanges = true;
+
+                        if (scenario == "рівний розподіл" || scenario == "спільні витрати")
                         {
-                            error = "Payment exceeds allowed amount.",
-                            allowed = maxAllowed,
-                            attempted = dto.PaidAmount.Value
-                        });
+                            decimal equal = Math.Round(ebill.AmountOfDept / ebill.Participants.Count);
+                            foreach (var p in ebill.Participants)
+                            {
+                                p.AssignedAmount = equal;
+                                if (scenario == "спільні витрати")
+                                    p.Balance = p.PaidAmount;
+                            }
+                        }
+
+                    }
 
                     part.PaidAmount = dto.PaidAmount.Value;
                     part.Balance = part.PaidAmount;
@@ -344,7 +355,6 @@ public static class EditingEbillEndpoints
                 }
             }
 
-            // --- Оновлення статусу платежів ---
             foreach (var p in ebill.Participants)
             {
                 p.PaymentStatus = p.Balance >= p.AssignedAmount ? "погашений" :
@@ -354,7 +364,6 @@ public static class EditingEbillEndpoints
             ebill.Status = ebill.Participants.All(p => p.PaymentStatus == "погашений") ? "закритий" : "активний";
             ebill.UpdatedAt = DateTime.UtcNow;
 
-            // --- Лог змін ---
             if (userMadeChanges)
             {
                 User? actorUser = null;
@@ -365,7 +374,6 @@ public static class EditingEbillEndpoints
                 }
                 else
                 {
-                    // Якщо організатор — дістаємо його з БД
                     if (ebill.OrganizerId == userId)
                         actorUser = await db.Users.FirstOrDefaultAsync(u => u.UserId == userId);
                 }
