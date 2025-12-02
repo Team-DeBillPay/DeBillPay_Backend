@@ -131,8 +131,6 @@ namespace DeBillPay_Backend.Endpoints
                 if (user is null)
                     return Results.BadRequest("Sender user record not found");
 
-
-                db.Notifications.Add(notification);
                 await db.SaveChangesAsync();
                
                 if (receiver != null && !string.IsNullOrWhiteSpace(receiver.Email))
