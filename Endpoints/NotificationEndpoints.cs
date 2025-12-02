@@ -58,6 +58,34 @@ namespace DeBillPay_Backend.Endpoints
                 return Results.Ok(all);
             })
  .RequireAuthorization();
+            app.MapGet("/api/notifications/{notificationId:int}", 
+    async (int notificationId, HttpContext http, ApplicationDbContext db) =>
+{
+    var userIdClaim = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+    if (userIdClaim == null)
+        return Results.Unauthorized();
+
+    int userId = int.Parse(userIdClaim);
+
+    var notification = await db.Notifications
+        .Where(n => n.NotificationId == notificationId && n.UserId == userId)
+        .Select(n => new
+        {
+            n.NotificationId,
+            n.Type,
+            Message = n.MessageText,
+            n.Status,
+            n.CreatedAt,
+            n.EbillId
+        })
+        .FirstOrDefaultAsync();
+
+    if (notification == null)
+        return Results.NotFound(new { error = "Notification not found" });
+
+    return Results.Ok(notification);
+})
+.RequireAuthorization();
             app.MapPut("/api/notifications/mark-read/{notificationId:int}",
     async (int notificationId, HttpContext http, ApplicationDbContext db) =>
     {
