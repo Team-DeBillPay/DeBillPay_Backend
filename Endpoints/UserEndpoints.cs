@@ -58,13 +58,14 @@ namespace DeBillPay_Backend.Endpoints
 
                 if (!string.IsNullOrWhiteSpace(user.Email))
                 {
-                    var config = app.Services.GetRequiredService<IConfiguration>();
-                    await EmailService.SendEmailAsync(
-                        user.Email,
-                        "Ласкаво просимо до DeBillPay",
-                        $"Привіт {user.FirstName},\n\nВаш акаунт успішно створено. Тепер ви можете користуватися нашим сервісом.",
-                        config
-                    );
+                    var queue = app.Services.GetRequiredService<EmailQueue>();
+
+                    queue.Enqueue(new EmailTask
+                    {
+                        To = user.Email,
+                        Subject = "Ласкаво просимо до DeBillPay",
+                        Body = $"Привіт {user.FirstName},\n\nВаш акаунт успішно створено. Тепер ви можете користуватися нашим сервісом."
+                    });
                 }
                 return Results.Ok("User registered successfully");
             });

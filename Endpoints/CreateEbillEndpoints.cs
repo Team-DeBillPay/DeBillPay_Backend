@@ -367,12 +367,14 @@ public static class CreateEbillEndpoints
                 if (user != null && !string.IsNullOrWhiteSpace(user.Email))
                 {
 
-                    await EmailService.SendEmailAsync(
-                        user.Email,
-                        "Вас додали до чеку", 
-                        $"Привіт {user.FirstName},\n\nВас додали до чеку \"{ebill.Name}\".\n\nПерейдіть у додаток, щоб переглянути деталі.", 
-                        http.RequestServices.GetRequiredService<IConfiguration>() 
-                    );
+                    var emailQueue = http.RequestServices.GetRequiredService<EmailQueue>();
+
+                    emailQueue.Enqueue(new EmailTask
+                    {
+                        To = user.Email,
+                        Subject = "Вас додали до чеку",
+                        Body = $"Привіт {user.FirstName},\n\nВас додали до чеку \"{ebill.Name}\".\n\nПерейдіть у додаток, щоб переглянути деталі."
+                    });
                 }
             }
             return Results.Ok(new
