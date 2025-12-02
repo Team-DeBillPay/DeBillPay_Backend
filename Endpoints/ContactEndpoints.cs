@@ -137,16 +137,19 @@ namespace DeBillPay_Backend.Endpoints
                 {
                     try
                     {
-                        await EmailService.SendEmailAsync(
-                       receiver.Email,
-                       "Нове запрошення в друзі",
-                       $"Привіт {receiver.FirstName},\n\nВи отримали запрошення в друзі від {user.FirstName} {user.LastName}.\n\nПерейдіть у додаток, щоб прийняти або відхилити запрошення.",
-                       http.RequestServices.GetRequiredService<IConfiguration>()
-                   );
+                        var queue = http.RequestServices.GetRequiredService<EmailQueue>();
+
+                        queue.Enqueue(new EmailTask
+                        {
+                            To = receiver.Email,
+                            Subject = "Нове запрошення в друзі",
+                            Body = $"Привіт {receiver.FirstName},\n\n" +
+                                   $"Ви отримали запрошення в друзі від {user.FirstName} {user.LastName}."
+                        });
                     }
                     catch
                     {
-
+                        
                     }
                 }
                 return Results.Ok("Invitation sent");
