@@ -18,7 +18,7 @@ public static class NotificationService
             Type = type,
             MessageText = message,
             Status = "unread",
-            CreatedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow.AddHours(2),
             EbillId = ebillId
         };
 

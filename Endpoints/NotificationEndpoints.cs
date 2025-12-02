@@ -31,16 +31,33 @@ namespace DeBillPay_Backend.Endpoints
                     .Where(n => n.UserId == userId)
                     .Select(n => new
                     {
-                        Type = n.Type,
+                        Type = n.Type,              
                         Message = n.MessageText,
                         Status = n.Status,
                         CreatedAt = n.CreatedAt
                     })
-                    .OrderByDescending(x => x.CreatedAt)
                     .ToListAsync();
 
-                return Results.Ok(notifications);
-            });
+                var invitations = await db.Invitations
+                    .Where(i => i.ReceiverId == userId && i.Status == "pending")
+                    .Include(i => i.Sender)
+                    .Select(i => new
+                    {
+                        Type = "friend_invitation",
+                        Message = $"Запрошення від {i.Sender.FirstName} {i.Sender.LastName}",
+                        Status = i.Status,
+                        CreatedAt = i.CreatedAt
+                    })
+                    .ToListAsync();
+
+                var all = notifications
+                    .Concat(invitations)
+                    .OrderByDescending(x => x.CreatedAt)
+                    .ToList();
+
+                return Results.Ok(all);
+            })
+ .RequireAuthorization();
             app.MapPut("/api/notifications/mark-read/{notificationId:int}",
     async (int notificationId, HttpContext http, ApplicationDbContext db) =>
     {
