@@ -57,16 +57,16 @@ namespace DeBillPay_Backend.Endpoints
                 );
 
                 // Надсилаємо email, якщо є пошта
-                if (!string.IsNullOrWhiteSpace(user.Email))
-                {
-                    var config = app.Services.GetRequiredService<IConfiguration>();
-                    await EmailService.SendEmailAsync(
-                        user.Email,
-                        "Ласкаво просимо до DeBillPay",
-                        $"Привіт {user.FirstName},\n\nВаш акаунт успішно створено. Тепер ви можете користуватися нашим сервісом.",
-                        config
-                    );
-                }
+                //if (!string.IsNullOrWhiteSpace(user.Email))
+                //{
+                //    var config = app.Services.GetRequiredService<IConfiguration>();
+                //    await EmailService.SendEmailAsync(
+                //        user.Email,
+                //        "Ласкаво просимо до DeBillPay",
+                //        $"Привіт {user.FirstName},\n\nВаш акаунт успішно створено. Тепер ви можете користуватися нашим сервісом.",
+                //        config
+                //    );
+                //}
                 return Results.Ok("User registered successfully");
             });
 
