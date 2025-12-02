@@ -165,7 +165,7 @@ public static class EditingEbillEndpoints
                     ebillId,
                     userId,
                     "added_participant",
-                    $"{actor.FirstName} додав(-ла) {addedUser.FirstName} до чеку"
+                     $"{actor.FirstName}{actor.LastName} додав(-ла) {addedUser.FirstName} {addedUser.LastName} до чеку"
                 );
             }
 
@@ -184,8 +184,9 @@ public static class EditingEbillEndpoints
 						p.Balance = p.PaidAmount;
 				}
 			}
+            
 
-			foreach (var p in ebill.Participants)
+            foreach (var p in ebill.Participants)
 			{
 				if (p.Balance >= p.AssignedAmount)
 					p.PaymentStatus = "погашений";
@@ -210,7 +211,8 @@ public static class EditingEbillEndpoints
         app.MapPut("/api/ebills/{ebillId:int}/participants/update",
         async (int ebillId, UpdateParticipantDto dto, HttpContext http, ApplicationDbContext db) =>
         {
-            List<string> changedFields = new();
+            List<string> changedFields = new();        // те, що робив користувач
+            List<string> autoChangedFields = new();
             var userIdClaim = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (userIdClaim is null)
                 return Results.Json(new { error = "Unauthorized" }, statusCode: 401);
