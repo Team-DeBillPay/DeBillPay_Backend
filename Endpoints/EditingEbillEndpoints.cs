@@ -165,7 +165,7 @@ public static class EditingEbillEndpoints
                     ebillId,
                     userId,
                     "added_participant",
-                    $"{actor.FirstName}{actor.LastName} додав(-ла) {addedUser.FirstName} {addedUser.LastName} до чеку"
+                    $"{actor.FirstName} додав(-ла) {addedUser.FirstName} до чеку"
                 );
             }
 
@@ -210,8 +210,7 @@ public static class EditingEbillEndpoints
         app.MapPut("/api/ebills/{ebillId:int}/participants/update",
         async (int ebillId, UpdateParticipantDto dto, HttpContext http, ApplicationDbContext db) =>
         {
-            List<string> changedFields = new();        // те, що робив користувач
-            List<string> autoChangedFields = new();
+            List<string> changedFields = new();
             var userIdClaim = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (userIdClaim is null)
                 return Results.Json(new { error = "Unauthorized" }, statusCode: 401);
@@ -329,11 +328,7 @@ public static class EditingEbillEndpoints
                         // --- FIX for "індивідуальні суми" ---
                         if (scenario == "індивідуальні суми")
                         {
-                            decimal oldDept = ebill.AmountOfDept;
                             ebill.AmountOfDept = ebill.Participants.Sum(p => p.AssignedAmount);
-
-                            if (oldDept != ebill.AmountOfDept)
-                                autoChangedFields.Add($"система оновила загальну суму на основі індивідуальних сум ({oldDept} → {ebill.AmountOfDept})");
                         }
                     }
                 }
@@ -364,30 +359,26 @@ public static class EditingEbillEndpoints
                     {
                         ebill.AmountOfDept = othersPaid + dto.PaidAmount.Value;
 
-                            userMadeChanges = true;
+                        userMadeChanges = true;
 
                         if (scenario == "рівний розподіл" || scenario == "спільні витрати")
                         {
                             decimal equal = Math.Round(ebill.AmountOfDept / ebill.Participants.Count);
-
                             foreach (var p in ebill.Participants)
                             {
                                 if (p.AssignedAmount != equal)
-                                {
-                                    autoChangedFields.Add(
-                                        $"системний перерахунок AssignedAmount для {p.User.FirstName} {p.User.LastName} ({p.AssignedAmount} → {equal})"
-                                    );
-
-                                    p.AssignedAmount = equal;
-                                }
-
+{
+    changedFields.Add($"суму, яку має сплатити учасник {p.User.FirstName} {part.User.LastName} ({p.AssignedAmount} → {equal})");
+    p.AssignedAmount = equal;
+    userMadeChanges = true;
+}
                                 if (scenario == "спільні витрати")
                                     p.Balance = p.PaidAmount;
                             }
                         }
 
                     }
-                    if (scenario == "індивідуальні суми")
+
                     part.PaidAmount = dto.PaidAmount.Value;
                     part.Balance = part.PaidAmount;
                     userMadeChanges = true;
@@ -395,11 +386,7 @@ public static class EditingEbillEndpoints
                     // --- FIX: перерахунок AmountOfDept для "спільні витрати" ---
                     if (scenario == "спільні витрати")
                     {
-                        decimal oldDept = ebill.AmountOfDept;
                         ebill.AmountOfDept = ebill.Participants.Sum(x => x.PaidAmount);
-
-                        if (ebill.AmountOfDept != oldDept)
-                            autoChangedFields.Add($"система перерахувала загальну суму ({oldDept} → {ebill.AmountOfDept})");
                     }
 
                 }
@@ -413,41 +400,32 @@ public static class EditingEbillEndpoints
 
             ebill.Status = ebill.Participants.All(p => p.PaymentStatus == "погашений") ? "закритий" : "активний";
             ebill.UpdatedAt = DateTime.UtcNow;
-            if (scenario == "рівний розподіл" || scenario == "спільні витрати")
-                try
-            {
-                if (userMadeChanges)
-                {
-                    var actorUser = await db.Users.FirstOrDefaultAsync(u => u.UserId == userId);
-                    if (actorUser == null)
-                        return Results.BadRequest(new { error = "User record missing" });
 
-                    // 1️⃣ Спочатку логимо всі зміни користувача
-                    foreach (var field in changedFields)
+            try
+            {
+                    if (userMadeChanges)
                     {
+                        var actorUser = await db.Users.FirstOrDefaultAsync(u => u.UserId == userId);
+                        if (actorUser == null)
+                            return Results.BadRequest(new { error = "User record missing" });
+
+                        string details;
+
+                        if (changedFields.Count == 1)
+                            details = $"{actorUser.FirstName} {actorUser.LastName} оновив(-ла) {changedFields[0]}";
+                        else
+                            details = $"{actorUser.FirstName} {actorUser.LastName} оновив(-ла): " + string.Join(", ", changedFields);
+
                         await EbillHistoryService.AddAsync(
                             db,
                             ebillId,
                             userId,
                             "updated",
-                            $"{actorUser.FirstName} {actorUser.LastName} оновив(-ла) {field}"
+                            details
                         );
                     }
 
-                    // 2️⃣ Окремо, один раз, логимо автоматичні зміни системи
-                    if (autoChangedFields.Any())
-                    {
-                        await EbillHistoryService.AddAsync(
-                            db,
-                            ebillId,
-                            userId,
-                            "system-updated",
-                            string.Join(", ", autoChangedFields)
-                        );
-                    }
-                }
-
-                await db.SaveChangesAsync();
+                    await db.SaveChangesAsync();
             }
             catch (DbUpdateException dbEx)
             {
