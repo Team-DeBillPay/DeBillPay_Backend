@@ -15,7 +15,52 @@ using Microsoft.AspNetCore.Mvc;
 
 public static class EditingEbillEndpoints
 {
-	public static void MapEditingEbillEndpoints(this IEndpointRouteBuilder app)
+    private static void RecalculateEbill(Ebill ebill)
+    {
+        string s = ebill.Scenario.ToLower();
+
+        // Фікс статусів
+        foreach (var p in ebill.Participants)
+            p.Balance = p.PaidAmount;
+
+        if (s == "спільні витрати")
+        {
+            ebill.AmountOfDept = ebill.Participants.Sum(p => p.PaidAmount);
+
+            decimal equal = Math.Round(ebill.AmountOfDept / ebill.Participants.Count);
+
+            foreach (var p in ebill.Participants)
+                p.AssignedAmount = equal;
+        }
+        else if (s == "рівний розподіл")
+        {
+            decimal equal = Math.Round(ebill.AmountOfDept / ebill.Participants.Count);
+
+            foreach (var p in ebill.Participants)
+                p.AssignedAmount = equal;
+        }
+        else if (s == "індивідуальні суми")
+        {
+            ebill.AmountOfDept = ebill.Participants.Sum(p => p.AssignedAmount);
+        }
+
+        // Розрахунок статусу оплати
+        foreach (var p in ebill.Participants)
+        {
+            p.PaymentStatus =
+                p.Balance >= p.AssignedAmount ? "погашений" :
+                p.Balance == 0 ? "непогашений" :
+                "частково погашений";
+        }
+
+        ebill.Status = ebill.Participants.All(p => p.PaymentStatus == "погашений")
+            ? "закритий"
+            : "активний";
+
+        ebill.UpdatedAt = DateTime.UtcNow;
+    }
+
+    public static void MapEditingEbillEndpoints(this IEndpointRouteBuilder app)
 	{
 		app.MapPut("/api/ebills/{ebillId:int}/editor-rights",
 		async (int ebillId, UpdateEditorRightsDto dto, HttpContext http, ApplicationDbContext db) =>
@@ -208,11 +253,10 @@ public static class EditingEbillEndpoints
 		})
 
         .RequireAuthorization();
+
         app.MapPut("/api/ebills/{ebillId:int}/participants/update",
         async (int ebillId, UpdateParticipantDto dto, HttpContext http, ApplicationDbContext db) =>
         {
-            List<string> changedFields = new();        // те, що робив користувач
-            List<string> autoChangedFields = new();
             var userIdClaim = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (userIdClaim is null)
                 return Results.Json(new { error = "Unauthorized" }, statusCode: 401);
@@ -234,210 +278,124 @@ public static class EditingEbillEndpoints
 
             string scenario = ebill.Scenario.ToLower();
 
+            List<string> changedFields = new();
             bool userMadeChanges = false;
 
-            // --- Оновлення назви ---
-            if (dto.Name != null)
+            // -------------------------------------------------
+            // 1️⃣ ОНОВЛЕННЯ НАЗВИ
+            // -------------------------------------------------
+            if (dto.Name != null && dto.Name != ebill.Name)
             {
                 if (string.IsNullOrWhiteSpace(dto.Name))
                     return Results.BadRequest(new { error = "Name cannot be empty." });
 
-                if (dto.Name != null && dto.Name != ebill.Name)
-                {
-                    changedFields.Add($"назву (\"{ebill.Name}\" → \"{dto.Name}\")");
-                    ebill.Name = dto.Name;
-                    userMadeChanges = true;
-                }
+                changedFields.Add($"назву (\"{ebill.Name}\" → \"{dto.Name}\")");
+                ebill.Name = dto.Name;
+                userMadeChanges = true;
             }
 
-
-            if (dto.Description != null)
+            // -------------------------------------------------
+            // 2️⃣ ОНОВЛЕННЯ ОПИСУ
+            // -------------------------------------------------
+            if (dto.Description != null && dto.Description != ebill.Description)
             {
                 if (string.IsNullOrWhiteSpace(dto.Description))
                     return Results.BadRequest(new { error = "Description cannot be empty." });
 
-                if (dto.Description != null && dto.Description != ebill.Description)
+                changedFields.Add($"опис (\"{ebill.Description}\" → \"{dto.Description}\")");
+                ebill.Description = dto.Description;
+                userMadeChanges = true;
+            }
+
+            // -------------------------------------------------
+            // 3️⃣ ОНОВЛЕННЯ ЗАГАЛЬНОЇ СУМИ
+            // -------------------------------------------------
+            if (dto.AmountOfDept.HasValue)
+            {
+                if (scenario == "індивідуальні суми")
+                    return Results.BadRequest(new { error = "AmountOfDept is auto-calculated in this scenario." });
+
+                if (dto.AmountOfDept.Value < 0)
+                    return Results.BadRequest(new { error = "AmountOfDept must be non-negative" });
+
+                if (dto.AmountOfDept.Value != ebill.AmountOfDept)
                 {
-                    changedFields.Add($"опис ({ebill.Description} → {dto.Description})");
-                    ebill.Description = dto.Description;
+                    changedFields.Add($"загальну суму ({ebill.AmountOfDept} → {dto.AmountOfDept.Value})");
+                    ebill.AmountOfDept = dto.AmountOfDept.Value;
                     userMadeChanges = true;
                 }
             }
 
-            // --- Оновлення суми боргу ---
-            if (dto.AmountOfDept.HasValue)
-            {
-                if (scenario == "індивідуальні суми")
-                {
-                    return Results.BadRequest(new { error = "In the 'individual amounts' scenario, the total amount is calculated automatically and cannot be changed manually." });
-                }
-                if (dto.AmountOfDept.Value < 0)
-                    return Results.BadRequest(new { error = "AmountOfDept must be non-negative" });
-                if (dto.AmountOfDept.Value != ebill.AmountOfDept)
-                    changedFields.Add($"загальну суму ({ebill.AmountOfDept} → {dto.AmountOfDept.Value})");
-                ebill.AmountOfDept = dto.AmountOfDept.Value;
-                userMadeChanges = true;
-
-                if (scenario == "рівний розподіл" || scenario == "спільні витрати")
-                {
-                    decimal equal = Math.Round(ebill.AmountOfDept / ebill.Participants.Count);
-                    foreach (var p in ebill.Participants)
-                    {
-                        p.AssignedAmount = equal;
-                        if (scenario == "спільні витрати")
-                            p.Balance = p.PaidAmount;
-                    }
-                }
-                else if (scenario == "індивідуальні суми")
-                {
-                    decimal sumAssigned = ebill.Participants.Sum(p => p.AssignedAmount);
-                    if (sumAssigned > ebill.AmountOfDept)
-                    {
-                        decimal diff = sumAssigned - ebill.AmountOfDept;
-                        var lastPart = ebill.Participants.LastOrDefault();
-                        if (lastPart != null)
-                            lastPart.AssignedAmount = Math.Max(0, lastPart.AssignedAmount - diff);
-                    }
-                }
-            }
-
-            // --- Оновлення конкретного учасника ---
+            // -------------------------------------------------
+            // 4️⃣ ОНОВЛЕННЯ ДАНИХ КОНКРЕТНОГО УЧАСНИКА
+            // -------------------------------------------------
             if (dto.ParticipantId.HasValue)
             {
                 var part = ebill.Participants.FirstOrDefault(p => p.ParticipantId == dto.ParticipantId.Value);
                 if (part == null)
                     return Results.BadRequest(new { error = "Participant not found" });
 
-                // Заборона зміни AssignedAmount для певних сценаріїв
+                // ----- AssignedAmount -----
                 if (dto.AssignedAmount.HasValue)
                 {
-
-                    if (scenario == "спільні витрати" || scenario == "рівний розподіл")
-                    {
-                        return Results.BadRequest(new { error = $"Cannot manually edit AssignedAmount in '{scenario}' scenario." });
-                    }
+                    if (scenario is "спільні витрати" or "рівний розподіл")
+                        return Results.BadRequest(new { error = "AssignedAmount cannot be manually edited in this scenario." });
 
                     if (dto.AssignedAmount.Value < 0)
                         return Results.BadRequest(new { error = "AssignedAmount must be non-negative" });
-                    if (dto.AssignedAmount.Value != part.AssignedAmount)
-                    {
-                        changedFields.Add(
-                            $"суму, яку має сплатити учасник {part.User.FirstName} {part.User.LastName} ({part.AssignedAmount} → {dto.AssignedAmount.Value})"
-                        );
-                        part.AssignedAmount = dto.AssignedAmount.Value;
-                        userMadeChanges = true;
 
-                        // --- FIX for "індивідуальні суми" ---
-                        if (scenario == "індивідуальні суми")
-                        {
-                            ebill.AmountOfDept = ebill.Participants.Sum(p => p.AssignedAmount);
-                        }
-                    }
+                    changedFields.Add(
+                        $"суму, яку має сплатити {part.User.FirstName} ({part.AssignedAmount} → {dto.AssignedAmount.Value})"
+                    );
+
+                    part.AssignedAmount = dto.AssignedAmount.Value;
+                    userMadeChanges = true;
+
+                    if (scenario == "індивідуальні суми")
+                        ebill.AmountOfDept = ebill.Participants.Sum(p => p.AssignedAmount);
                 }
 
-                // Заборона зміни PaidAmount для певних сценаріїв
+                // ----- PaidAmount -----
                 if (dto.PaidAmount.HasValue)
                 {
-                    if (scenario == "рівний розподіл" || scenario == "індивідуальні суми")
-                    {
-                        return Results.BadRequest(new { error = $"Cannot manually edit PaidAmount in '{scenario}' scenario." });
-                    }
+                    if (scenario is "рівний розподіл" or "індивідуальні суми")
+                        return Results.BadRequest(new { error = "PaidAmount cannot be manually edited in this scenario." });
 
                     if (dto.PaidAmount.Value < 0)
                         return Results.BadRequest(new { error = "PaidAmount must be non-negative." });
-                    if (dto.PaidAmount.Value != part.PaidAmount)
-                    {
-                        changedFields.Add(
-                            $"суму, яку витратив учасник {part.User.FirstName} {part.User.LastName} ({part.PaidAmount} → {dto.PaidAmount.Value})"
-                        );
-                    }
-                    decimal othersPaid = ebill.Participants
-                        .Where(p => p.ParticipantId != part.ParticipantId)
-                        .Sum(p => p.PaidAmount);
 
-                    decimal maxAllowed = ebill.AmountOfDept - othersPaid;
-
-                    if (dto.PaidAmount.Value > maxAllowed)
-                    {
-                        ebill.AmountOfDept = othersPaid + dto.PaidAmount.Value;
-
-                        userMadeChanges = true;
-
-                        if (scenario == "рівний розподіл" || scenario == "спільні витрати")
-                        {
-                            decimal equal = Math.Round(ebill.AmountOfDept / ebill.Participants.Count);
-                            foreach (var p in ebill.Participants)
-                            {
-                                if (p.AssignedAmount != equal)
-{
-    changedFields.Add($"суму, яку має сплатити учасник {p.User.FirstName} {part.User.LastName} ({p.AssignedAmount} → {equal})");
-    p.AssignedAmount = equal;
-    userMadeChanges = true;
-}
-                                if (scenario == "спільні витрати")
-                                    p.Balance = p.PaidAmount;
-                            }
-                        }
-
-                    }
+                    changedFields.Add(
+                        $"суму, яку витратив {part.User.FirstName} ({part.PaidAmount} → {dto.PaidAmount.Value})"
+                    );
 
                     part.PaidAmount = dto.PaidAmount.Value;
                     part.Balance = part.PaidAmount;
                     userMadeChanges = true;
-
-                    // --- FIX: перерахунок AmountOfDept для "спільні витрати" ---
-                    if (scenario == "спільні витрати")
-                    {
-                        ebill.AmountOfDept = ebill.Participants.Sum(x => x.PaidAmount);
-                    }
-
                 }
             }
 
-            foreach (var p in ebill.Participants)
+            // -------------------------------------------------
+            // 5️⃣ ПЕРЕРАХУНОК ДЛЯ ВСІХ СЦЕНАРІЇВ
+            // -------------------------------------------------
+            RecalculateEbill(ebill);
+
+            // -------------------------------------------------
+            // 6️⃣ ЗБЕРЕЖЕННЯ ІСТОРІЇ
+            // -------------------------------------------------
+            if (userMadeChanges)
             {
-                p.PaymentStatus = p.Balance >= p.AssignedAmount ? "погашений" :
-                                  p.Balance == 0 ? "непогашений" : "частково погашений";
+                var actor = await db.Users.FirstAsync(u => u.UserId == userId);
+
+                foreach (var f in changedFields)
+                {
+                    await EbillHistoryService.AddAsync(
+                        db, ebillId, userId, "updated",
+                        $"{actor.FirstName} {actor.LastName} оновив(-ла) {f}"
+                    );
+                }
             }
 
-            ebill.Status = ebill.Participants.All(p => p.PaymentStatus == "погашений") ? "закритий" : "активний";
-            ebill.UpdatedAt = DateTime.UtcNow;
-
-            try
-            {
-                    if (userMadeChanges)
-                    {
-                        var actorUser = await db.Users.FirstOrDefaultAsync(u => u.UserId == userId);
-                        if (actorUser == null)
-                            return Results.BadRequest(new { error = "User record missing" });
-
-                        string details;
-
-                        if (changedFields.Count == 1)
-                            details = $"{actorUser.FirstName} {actorUser.LastName} оновив(-ла) {changedFields[0]}";
-                        else
-                            details = $"{actorUser.FirstName} {actorUser.LastName} оновив(-ла): " + string.Join(", ", changedFields);
-
-                        await EbillHistoryService.AddAsync(
-                            db,
-                            ebillId,
-                            userId,
-                            "updated",
-                            details
-                        );
-                    }
-
-                    await db.SaveChangesAsync();
-            }
-            catch (DbUpdateException dbEx)
-            {
-                return Results.Problem($"Database update failed: {dbEx.InnerException?.Message ?? dbEx.Message}");
-            }
-            catch (Exception ex)
-            {
-                return Results.Problem($"Unexpected error: {ex.Message}");
-            }
-
+            await db.SaveChangesAsync();
             return Results.Ok(new { message = "E-bill updated successfully" });
         })
         .RequireAuthorization();
@@ -496,8 +454,7 @@ public static class EditingEbillEndpoints
         {
             ebill.Status = "активний";
         }
-
-        ebill.UpdatedAt = DateTime.UtcNow;
+        ebill.UpdatedAt = DateTime.UtcNow.AddHours(2);
         User? actorUser = null;
 
         if (currentUser != null)

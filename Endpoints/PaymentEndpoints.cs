@@ -68,7 +68,7 @@ public static class PaymentEndpoints
                 UserId = userId,
                 Amount = amount,
                 Status = "pending",
-                TransactionDate = DateTime.UtcNow,
+                TransactionDate = DateTime.UtcNow.AddHours(2),
                 TransactionReference = orderId
             };
 
@@ -127,7 +127,7 @@ public static class PaymentEndpoints
             {
                 var alreadySuccess = payment.Status == "success";
 
-                payment.TransactionDate = DateTime.UtcNow;
+                payment.TransactionDate = DateTime.UtcNow.AddHours(2);
                 payment.Status = callback.status;
 
                 if (callback.status == "success" && !alreadySuccess)
