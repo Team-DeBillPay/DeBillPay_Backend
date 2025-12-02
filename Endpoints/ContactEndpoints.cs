@@ -131,12 +131,23 @@ namespace DeBillPay_Backend.Endpoints
                 if (user is null)
                     return Results.BadRequest("Sender user record not found");
 
+                var notification = new Notification
+                {
+                    UserId = receiverId,
+                    Type = "friend_invitation",
+                    MessageText = $"Запрошення в друзі від {user.FirstName} {user.LastName}",
+                    Status = "unread",
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                db.Notifications.Add(notification);
                 await db.SaveChangesAsync();
-               
+
                 if (receiver != null && !string.IsNullOrWhiteSpace(receiver.Email))
                 {
                     try
                     {
+                       
                         var queue = http.RequestServices.GetRequiredService<EmailQueue>();
 
                         queue.Enqueue(new EmailTask
