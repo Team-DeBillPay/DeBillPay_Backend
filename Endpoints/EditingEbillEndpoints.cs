@@ -159,7 +159,7 @@ public static class EditingEbillEndpoints
 				return Results.NotFound(new { error = "E-bill not found" });
 
             var currentUser = ebill.Participants.FirstOrDefault(p => p.UserId == userId);
-            if (ebill.OrganizerId != userId &&
+            if (ebill.OrganizerId != userId  &&
 				(currentUser == null || (!currentUser.IsAdminRights && !currentUser.IsEditorRights)))
 				return Results.Json(new { error = "You do not have permission" }, statusCode: 403);
 
@@ -230,7 +230,6 @@ public static class EditingEbillEndpoints
 				}
 			}
             
-
             foreach (var p in ebill.Participants)
 			{
 				if (p.Balance >= p.AssignedAmount)
