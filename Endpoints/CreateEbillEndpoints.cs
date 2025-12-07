@@ -127,6 +127,7 @@ public static class CreateEbillEndpoints
         .ToList();
 }
 
+
             if (string.IsNullOrWhiteSpace(dto.Name))
                 return Results.BadRequest("Name is required.");
             if (string.IsNullOrWhiteSpace(dto.Currency))
