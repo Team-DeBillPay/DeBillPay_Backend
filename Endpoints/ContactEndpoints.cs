@@ -110,11 +110,22 @@ namespace DeBillPay_Backend.Endpoints
                 if (senderId == receiverId)
                     return Results.BadRequest("You cannot add yourself");
 
-                bool exists = await db.Invitations.AnyAsync(i =>
-                    i.SenderId == senderId && i.ReceiverId == receiverId && i.Status == "pending");
+                var existing = await db.Invitations
+     .Where(i =>
+         (i.SenderId == senderId && i.ReceiverId == receiverId) ||
+         (i.SenderId == receiverId && i.ReceiverId == senderId))
+     .OrderByDescending(i => i.CreatedAt)
+     .FirstOrDefaultAsync();
 
-                if (exists)
-                    return Results.Conflict("Invitation already sent");
+                if (existing != null)
+                {
+                    if (existing.Status == "pending")
+                        return Results.Conflict("Invitation already sent");
+
+                    if (existing.Status == "accepted")
+                        return Results.Conflict("You are already friends");
+
+                }
 
                 var invite = new Invitation
                 {
@@ -126,7 +137,6 @@ namespace DeBillPay_Backend.Endpoints
                 };
 
                 db.Invitations.Add(invite);
-
                 var user = await db.Users.FindAsync(senderId);
                 if (user is null)
                     return Results.BadRequest("Sender user record not found");
@@ -137,7 +147,6 @@ namespace DeBillPay_Backend.Endpoints
                     "friend_invitation",
                     $"Запрошення в друзі від {user.FirstName} {user.LastName}"
                 );
-                await db.SaveChangesAsync();
 
                 if (receiver != null && !string.IsNullOrWhiteSpace(receiver.Email))
                 {
@@ -238,11 +247,20 @@ namespace DeBillPay_Backend.Endpoints
                     return Results.NotFound("Contact does not exist");
 
                 db.Contacts.RemoveRange(contacts);
+
+                var invitations = await db.Invitations
+                    .Where(i =>
+                        (i.SenderId == userId && i.ReceiverId == friendId) ||
+                        (i.SenderId == friendId && i.ReceiverId == userId))
+                    .ToListAsync();
+
+                db.Invitations.RemoveRange(invitations);
+
                 await db.SaveChangesAsync();
 
                 return Results.Ok("Contact deleted");
             })
-.RequireAuthorization();
+ .RequireAuthorization();
 
         }
     }

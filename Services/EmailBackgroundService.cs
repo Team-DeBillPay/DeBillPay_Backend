@@ -41,7 +41,7 @@ namespace DeBillPay_Backend.Services
                     }
                 }
 
-                await Task.Delay(100, stoppingToken); // throttle
+                await Task.Delay(100, stoppingToken);
             }
 
             Console.WriteLine("[EmailWorker] Stopped");
