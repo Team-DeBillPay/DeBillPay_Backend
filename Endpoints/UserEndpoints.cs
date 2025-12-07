@@ -48,7 +48,6 @@ namespace DeBillPay_Backend.Endpoints
                 db.Users.Add(user);
                 await db.SaveChangesAsync();
 
-                // Створюємо notification
                 await NotificationService.CreateAsync(
                     db,
                     user.UserId,

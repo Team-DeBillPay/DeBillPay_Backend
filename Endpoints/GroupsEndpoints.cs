@@ -35,7 +35,6 @@ namespace DeBillPay_Backend.Endpoints
                 if (string.IsNullOrWhiteSpace(dto.Name))
                     return Results.BadRequest(new { error = "Group name is required" });
 
-                // Валідація друзів
                 var validFriends = await db.Contacts
                     .Where(c => c.UserId == userIdInt &&
                                 dto.FriendIds.Contains(c.FriendId) &&
@@ -53,7 +52,6 @@ namespace DeBillPay_Backend.Endpoints
                     });
                 }
 
-                // ❗ Забороняємо створювати групу, де немає інших учасників
                 if (validFriends.Count == 0)
                 {
                     return Results.BadRequest(new
@@ -62,24 +60,21 @@ namespace DeBillPay_Backend.Endpoints
                     });
                 }
 
-                // Створюємо групу
                 var group = new Group
                 {
                     Name = dto.Name,
-                    UserId = userIdInt, // owner
+                    UserId = userIdInt, 
                 };
 
                 db.Groups.Add(group);
-                await db.SaveChangesAsync(); // Щоб group.GroupId став доступним
+                await db.SaveChangesAsync();
 
-                // Додаємо власника групи
                 db.GroupMembers.Add(new GroupMember
                 {
                     GroupId = group.GroupId,
                     MemberId = userIdInt
                 });
 
-                // Додаємо членів групи
                 foreach (var friendId in validFriends)
                 {
                     db.GroupMembers.Add(new GroupMember
@@ -205,7 +200,6 @@ namespace DeBillPay_Backend.Endpoints
 
                 int userId = int.Parse(userIdClaim);
 
-                // Група має належати власнику
                 var group = await db.Groups
                     .Include(g => g.Members)
                     .FirstOrDefaultAsync(g => g.GroupId == groupId && g.UserId == userId);
@@ -213,10 +207,8 @@ namespace DeBillPay_Backend.Endpoints
                 if (group == null)
                     return Results.NotFound(new { error = "Group not found or access denied" });
 
-                // Видаляємо всіх членів групи
                 db.GroupMembers.RemoveRange(group.Members);
 
-                // Видаляємо групу
                 db.Groups.Remove(group);
 
                 await db.SaveChangesAsync();

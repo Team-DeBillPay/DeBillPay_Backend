@@ -31,7 +31,7 @@ namespace DeBillPay_Backend.Endpoints
                     .Where(n => n.UserId == userId)
                     .Select(n => new
                     {
-                        Id = n.NotificationId,   // додаємо ID
+                        Id = n.NotificationId, 
                         Type = n.Type,
                         Message = n.MessageText,
                         Status = n.Status,
