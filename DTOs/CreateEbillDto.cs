@@ -12,5 +12,6 @@ namespace DeBillPay_Backend.DTOs
         public string Description { get; set; } = null!;
         public string Scenario { get; set; } = null!;
         public List<ParticipantAmountDto> Participants { get; set; } = new();
+        public int? GroupId { get; set; }
     }
 }

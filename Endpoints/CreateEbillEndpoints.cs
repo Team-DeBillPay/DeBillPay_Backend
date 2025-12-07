@@ -106,6 +106,26 @@ public static class CreateEbillEndpoints
                 return Results.NotFound("Organizer not found.");
             if (dto == null)
                 return Results.BadRequest("Request body is empty.");
+            if (dto.GroupId.HasValue)
+{
+    // 1. Перевіряємо чи існує група та чи вона належить юзеру
+    var group = await db.Groups
+        .Include(g => g.Members)
+        .FirstOrDefaultAsync(g => g.GroupId == dto.GroupId && g.UserId == organizerId);
+
+    if (group == null)
+        return Results.BadRequest(new { error = "Group not found or you do not own this group." });
+
+    // 2. Перетворюємо членів групи у список учасників
+    dto.Participants = group.Members
+        .Select(m => new ParticipantAmountDto
+        {
+            UserId = m.MemberId,
+            Amount = 0,
+            PaidAmount = 0
+        })
+        .ToList();
+}
 
             if (string.IsNullOrWhiteSpace(dto.Name))
                 return Results.BadRequest("Name is required.");
