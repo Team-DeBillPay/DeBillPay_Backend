@@ -158,15 +158,13 @@ public static class CreateEbillEndpoints
             if (dto.Scenario.ToLower() == "індивідуальні суми")
             {
                 decimal totalAssigned = participants.Sum(x => x.Amount ?? 0);
-                dto.AmountOfDept = totalAssigned; // Автоматично виставляємо правильну суму
+                dto.AmountOfDept = totalAssigned; 
             }
 
             if (dto.Scenario.ToLower() == "спільні витрати")
             {
-                // Автоматично визначаємо загальну суму
                 decimal totalPaid = participants.Sum(x => x.PaidAmount);
 
-                // Переписуємо AmountOfDept на правильний
                 dto.AmountOfDept = totalPaid;
             }
 
@@ -234,13 +232,12 @@ public static class CreateEbillEndpoints
                                 UserId = p.UserId,
                                 AssignedAmount = Math.Round(share),
                                 PaidAmount = 0,
-                                Balance = 0, // поки що 0
+                                Balance = 0, 
                                 IsAdminRights = false,
                                 IsEditorRights = false
                             });
                         }
 
-                        // Організатор лише адміністратор, не платить
                         ebill.Participants.Add(new EbillParticipant
                         {
                             UserId = organizerId,
@@ -256,9 +253,8 @@ public static class CreateEbillEndpoints
 
                 case "індивідуальні суми":
                     {
-                        // 1️⃣ Рахуємо правильну суму
                         decimal totalAssigned = participants.Sum(p => p.Amount ?? 0);
-                        ebill.AmountOfDept = totalAssigned; // 2️⃣ Переписуємо AmountOfDept
+                        ebill.AmountOfDept = totalAssigned; 
 
                         foreach (var p in participants)
                         {
@@ -295,7 +291,7 @@ public static class CreateEbillEndpoints
                                 UserId = p.UserId,
                                 AssignedAmount = Math.Round(share),
                                 PaidAmount = p.PaidAmount,
-                                Balance = p.PaidAmount, // початковий баланс = сплачено
+                                Balance = p.PaidAmount,
                                 IsAdminRights = p.UserId == organizerId,
                                 IsEditorRights = p.UserId == organizerId
                             });

@@ -19,7 +19,6 @@ public static class EditingEbillEndpoints
     {
         string s = ebill.Scenario.ToLower();
 
-        // Фікс статусів
         foreach (var p in ebill.Participants)
             p.Balance = p.PaidAmount;
 
@@ -44,7 +43,6 @@ public static class EditingEbillEndpoints
             ebill.AmountOfDept = ebill.Participants.Sum(p => p.AssignedAmount);
         }
 
-        // Розрахунок статусу оплати
         foreach (var p in ebill.Participants)
         {
             p.PaymentStatus =
@@ -280,9 +278,6 @@ public static class EditingEbillEndpoints
             List<string> changedFields = new();
             bool userMadeChanges = false;
 
-            // -------------------------------------------------
-            // 1️⃣ ОНОВЛЕННЯ НАЗВИ
-            // -------------------------------------------------
             if (dto.Name != null && dto.Name != ebill.Name)
             {
                 if (string.IsNullOrWhiteSpace(dto.Name))
@@ -293,9 +288,6 @@ public static class EditingEbillEndpoints
                 userMadeChanges = true;
             }
 
-            // -------------------------------------------------
-            // 2️⃣ ОНОВЛЕННЯ ОПИСУ
-            // -------------------------------------------------
             if (dto.Description != null && dto.Description != ebill.Description)
             {
                 if (string.IsNullOrWhiteSpace(dto.Description))
@@ -306,9 +298,6 @@ public static class EditingEbillEndpoints
                 userMadeChanges = true;
             }
 
-            // -------------------------------------------------
-            // 3️⃣ ОНОВЛЕННЯ ЗАГАЛЬНОЇ СУМИ
-            // -------------------------------------------------
             if (dto.AmountOfDept.HasValue)
             {
                 if (scenario == "індивідуальні суми")
@@ -325,16 +314,12 @@ public static class EditingEbillEndpoints
                 }
             }
 
-            // -------------------------------------------------
-            // 4️⃣ ОНОВЛЕННЯ ДАНИХ КОНКРЕТНОГО УЧАСНИКА
-            // -------------------------------------------------
             if (dto.ParticipantId.HasValue)
             {
                 var part = ebill.Participants.FirstOrDefault(p => p.ParticipantId == dto.ParticipantId.Value);
                 if (part == null)
                     return Results.BadRequest(new { error = "Participant not found" });
 
-                // ----- AssignedAmount -----
                 if (dto.AssignedAmount.HasValue)
                 {
                     if (scenario is "спільні витрати" or "рівний розподіл")
@@ -354,7 +339,6 @@ public static class EditingEbillEndpoints
                         ebill.AmountOfDept = ebill.Participants.Sum(p => p.AssignedAmount);
                 }
 
-                // ----- PaidAmount -----
                 if (dto.PaidAmount.HasValue)
                 {
                     if (scenario is "рівний розподіл" or "індивідуальні суми")
@@ -373,14 +357,8 @@ public static class EditingEbillEndpoints
                 }
             }
 
-            // -------------------------------------------------
-            // 5️⃣ ПЕРЕРАХУНОК ДЛЯ ВСІХ СЦЕНАРІЇВ
-            // -------------------------------------------------
             RecalculateEbill(ebill);
 
-            // -------------------------------------------------
-            // 6️⃣ ЗБЕРЕЖЕННЯ ІСТОРІЇ
-            // -------------------------------------------------
             if (userMadeChanges)
             {
                 var actor = await db.Users.FirstAsync(u => u.UserId == userId);
