@@ -1,6 +1,8 @@
-namespace DeBillPay_Backend.DTOs;
-
-public class MarkAsReadDto
+namespace DeBillPay_Backend.DTOs
 {
-    public int NotificationId { get; set; }
+
+    public class MarkAsReadDto
+    {
+        public int NotificationId { get; set; }
+    }
 }

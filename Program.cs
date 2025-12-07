@@ -144,6 +144,6 @@ app.MapEditingEbillEndpoints();
 app.MapCreateEbillEndpoints();
 app.MapNotificationEndpoints();
 app.MapEbillHistoryEndpoints();
-
+app.MapGroupsEndpoints();
 app.MapPaymentEndpoints();
 app.Run();
