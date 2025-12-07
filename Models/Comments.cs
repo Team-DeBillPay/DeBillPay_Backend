@@ -1,11 +1,15 @@
-namespace DeBillPay_Backend.Models;
-
-public class Comment
+namespace DeBillPay_Backend.Models
 {
-    public int CommentId { get; set; }
-    public string Text { get; set; } = null!;
-    public DateTime CreatedAt { get; set; }
+    public class Comment
+    {
+        public int CommentId { get; set; }
+        public string Text { get; set; } = null!;
+        public DateTime CreatedAt { get; set; }
 
-    public int EbillId { get; set; }
-    public Ebill Ebill { get; set; } = null!;
+        public int EbillId { get; set; }
+        public Ebill Ebill { get; set; } = null!;
+
+        public int UserId { get; set; }
+        public User User { get; set; } = null!;
+    }
 }
