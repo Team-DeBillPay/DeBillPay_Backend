@@ -96,6 +96,8 @@ builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
+app.UseCors();
+
 app.Use(async (context, next) =>
 {
     try
@@ -131,7 +133,6 @@ app.Use(async (context, next) =>
     }
 });
 
-app.UseCors();
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
