@@ -88,14 +88,7 @@ namespace DeBillPay_Backend.Endpoints
 
                 foreach (var friendId in validFriends)
                 {
-                    await NotificationService.CreateAsync(
-                        db,
-                        friendId,
-                        "added_to_group",
-                        $"Вас додали до групи: \"{group.Name}\"",
-                        null,
-                        group.GroupId
-                    );
+                    
 
                     var friend = await db.Users.FindAsync(friendId);
                     if (friend != null && !string.IsNullOrWhiteSpace(friend.Email))

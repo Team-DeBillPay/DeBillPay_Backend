@@ -97,7 +97,12 @@ namespace DeBillPay_Backend.Endpoints
 
                 return Results.Ok(contacts);
             });
-            app.MapPost("/api/contacts/invite", async (HttpContext http, ApplicationDbContext db, int receiverId) =>
+            app.MapPost("/api/contacts/invite", async (
+    HttpContext http,
+    ApplicationDbContext db,
+    NotificationService notificationService,  // DI
+    int receiverId
+) =>
             {
                 var senderIdClaim = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 if (senderIdClaim == null)
@@ -111,11 +116,11 @@ namespace DeBillPay_Backend.Endpoints
                     return Results.BadRequest("You cannot add yourself");
 
                 var existing = await db.Invitations
-     .Where(i =>
-         (i.SenderId == senderId && i.ReceiverId == receiverId) ||
-         (i.SenderId == receiverId && i.ReceiverId == senderId))
-     .OrderByDescending(i => i.CreatedAt)
-     .FirstOrDefaultAsync();
+                    .Where(i =>
+                        (i.SenderId == senderId && i.ReceiverId == receiverId) ||
+                        (i.SenderId == receiverId && i.ReceiverId == senderId))
+                    .OrderByDescending(i => i.CreatedAt)
+                    .FirstOrDefaultAsync();
 
                 if (existing != null)
                 {
@@ -124,7 +129,6 @@ namespace DeBillPay_Backend.Endpoints
 
                     if (existing.Status == "accepted")
                         return Results.Conflict("You are already friends");
-
                 }
 
                 var invite = new Invitation
@@ -138,40 +142,40 @@ namespace DeBillPay_Backend.Endpoints
 
                 db.Invitations.Add(invite);
                 await db.SaveChangesAsync();
+
                 var user = await db.Users.FindAsync(senderId);
                 if (user is null)
                     return Results.BadRequest("Sender user record not found");
 
-                await NotificationService.CreateAsync(
-                    db,
+                await notificationService.CreateAsync(
                     receiverId,
                     "friend_invitation",
-                    $"����������"
+                    $"Çàïðîøåííÿ"
                 );
 
-                if (receiver != null && !string.IsNullOrWhiteSpace(receiver.Email))
+                // Â³äïðàâêà email (íå îáîâ'ÿçêîâî ïîâåðòàòè ðåçóëüòàò)
+                try
                 {
-                    try
+                    if (!string.IsNullOrWhiteSpace(receiver.Email))
                     {
-                       
                         var queue = http.RequestServices.GetRequiredService<EmailQueue>();
-
                         queue.Enqueue(new EmailTask
                         {
                             To = receiver.Email,
-                            Subject = "���� ���������� � ����",
-                            Body = $"����� {receiver.FirstName},\n\n" +
-                                   $"�� �������� ���������� � ���� �� {user.FirstName} {user.LastName}."
+                            Subject = "Íîâå çàïðîøåííÿ â äðóç³",
+                            Body = $"Ïðèâ³ò {receiver.FirstName},\n\n" +
+                                   $"Âè îòðèìàëè çàïðîøåííÿ â äðóç³ â³ä {user.FirstName} {user.LastName}."
                         });
                     }
-                    catch
-                    {
-                        
-                    }
                 }
+                catch
+                {
+                    // Ìîæíà ëîãóâàòè ïîìèëêó, àëå íå âèõîäèòè ç lambda
+                }
+
+                // Ïîâåðòàºìî ðåçóëüòàò ó âñ³õ âèïàäêàõ
                 return Results.Ok("Invitation sent");
-            })
- .RequireAuthorization();
+            });
             app.MapPost("/api/contacts/accept", async (HttpContext http, ApplicationDbContext db, int invitationId) =>
             {
                 var userIdClaim = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
