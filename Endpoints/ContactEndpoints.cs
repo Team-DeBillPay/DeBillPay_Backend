@@ -150,10 +150,10 @@ namespace DeBillPay_Backend.Endpoints
                 await notificationService.CreateAsync(
                     receiverId,
                     "friend_invitation",
-                    $"Çàïðîøåííÿ â äðóç³ â³ä"
+                    $"Ã‡Ã Ã¯Ã°Ã®Ã¸Ã¥Ã­Ã­Ã¿"
                 );
 
-                // Â³äïðàâêà email (íå îáîâ'ÿçêîâî ïîâåðòàòè ðåçóëüòàò)
+                // Ã‚Â³Ã¤Ã¯Ã°Ã Ã¢ÃªÃ  email (Ã­Ã¥ Ã®Ã¡Ã®Ã¢'Ã¿Ã§ÃªÃ®Ã¢Ã® Ã¯Ã®Ã¢Ã¥Ã°Ã²Ã Ã²Ã¨ Ã°Ã¥Ã§Ã³Ã«Ã¼Ã²Ã Ã²)
                 try
                 {
                     if (!string.IsNullOrWhiteSpace(receiver.Email))
@@ -162,18 +162,18 @@ namespace DeBillPay_Backend.Endpoints
                         queue.Enqueue(new EmailTask
                         {
                             To = receiver.Email,
-                            Subject = "Íîâå çàïðîøåííÿ â äðóç³",
-                            Body = $"Ïðèâ³ò {receiver.FirstName},\n\n" +
-                                   $"Âè îòðèìàëè çàïðîøåííÿ â äðóç³ â³ä {user.FirstName} {user.LastName}."
+                            Subject = "ÃÃ®Ã¢Ã¥ Ã§Ã Ã¯Ã°Ã®Ã¸Ã¥Ã­Ã­Ã¿ Ã¢ Ã¤Ã°Ã³Ã§Â³",
+                            Body = $"ÃÃ°Ã¨Ã¢Â³Ã² {receiver.FirstName},\n\n" +
+                                   $"Ã‚Ã¨ Ã®Ã²Ã°Ã¨Ã¬Ã Ã«Ã¨ Ã§Ã Ã¯Ã°Ã®Ã¸Ã¥Ã­Ã­Ã¿ Ã¢ Ã¤Ã°Ã³Ã§Â³ Ã¢Â³Ã¤ {user.FirstName} {user.LastName}."
                         });
                     }
                 }
                 catch
                 {
-                    // Ìîæíà ëîãóâàòè ïîìèëêó, àëå íå âèõîäèòè ç lambda
+                    // ÃŒÃ®Ã¦Ã­Ã  Ã«Ã®Ã£Ã³Ã¢Ã Ã²Ã¨ Ã¯Ã®Ã¬Ã¨Ã«ÃªÃ³, Ã Ã«Ã¥ Ã­Ã¥ Ã¢Ã¨ÃµÃ®Ã¤Ã¨Ã²Ã¨ Ã§ lambda
                 }
 
-                // Ïîâåðòàºìî ðåçóëüòàò ó âñ³õ âèïàäêàõ
+                // ÃÃ®Ã¢Ã¥Ã°Ã²Ã ÂºÃ¬Ã® Ã°Ã¥Ã§Ã³Ã«Ã¼Ã²Ã Ã² Ã³ Ã¢Ã±Â³Ãµ Ã¢Ã¨Ã¯Ã Ã¤ÃªÃ Ãµ
                 return Results.Ok("Invitation sent");
             });
             app.MapPost("/api/contacts/accept", async (HttpContext http, ApplicationDbContext db, int invitationId) =>
