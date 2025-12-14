@@ -377,7 +377,8 @@ public static class CreateEbillEndpoints
                     participant.UserId,
                     "added_to_ebill",
                     $"Вас додали до чеку: \"{ebill.Name}\"",
-                    ebill.EbillId
+                    ebill.EbillId,
+                    null
                 );
 
                 var user = await db.Users.FindAsync(participant.UserId);

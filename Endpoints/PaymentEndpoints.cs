@@ -193,7 +193,8 @@ public static class PaymentEndpoints
                             participant.UserId,
                             notifType,
                             notifMessage,
-                            ebillId: payment.EbillId
+                            ebillId: payment.EbillId,
+                            null
                         );
                         if (!string.IsNullOrWhiteSpace(participant.User.Email))
                         {

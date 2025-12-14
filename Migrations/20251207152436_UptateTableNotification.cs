@@ -29,6 +29,7 @@ namespace DeBillPay_Backend.Migrations
                 principalColumn: "GroupId");
         }
 
+
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {

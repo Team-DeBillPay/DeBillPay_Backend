@@ -95,6 +95,7 @@ namespace DeBillPay_Backend.Endpoints
                         $"Вас додали до групи: \"{group.Name}\"",
                         null,
                         group.GroupId
+
                     );
 
                     var friend = await db.Users.FindAsync(friendId);

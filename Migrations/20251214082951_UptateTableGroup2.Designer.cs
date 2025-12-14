@@ -16,6 +16,7 @@ namespace DeBillPay_Backend.Migrations
     partial class UptateTableGroup2
     {
         /// <inheritdoc />
+        /// 
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618

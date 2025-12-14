@@ -298,6 +298,7 @@ public static class EditingEbillEndpoints
                 userMadeChanges = true;
             }
 
+
             if (dto.AmountOfDept.HasValue)
             {
                 if (scenario == "індивідуальні суми")
@@ -455,6 +456,7 @@ public static class EditingEbillEndpoints
             userId,
             "removed_participant",
             $"{actorUser.FirstName} видалив(-ла) {participantToRemove.User.FirstName} з чеку"
+
         );
 
 
