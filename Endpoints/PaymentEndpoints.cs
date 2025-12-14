@@ -78,7 +78,7 @@ public static class PaymentEndpoints
                 UserId = userId,
                 Amount = amount,
                 Status = "pending",
-                TransactionDate = DateTime.UtcNow.AddHours(2),
+                TransactionDate = DateTime.UtcNow,
                 TransactionReference = orderId
             };
 
@@ -142,7 +142,7 @@ public static class PaymentEndpoints
                 {
                     var oldStatus = payment.Status;
 
-                    payment.TransactionDate = DateTime.UtcNow.AddHours(2);
+                    payment.TransactionDate = DateTime.UtcNow;
                     payment.Status = callback.status;
 
                     if ((callback.status.ToLower() == "success" || callback.status.ToLower() == "sandbox") && oldStatus != "success")
@@ -228,7 +228,7 @@ public static class PaymentEndpoints
                             payment.Ebill.Status = "активний";
                         }
 
-                        payment.Ebill.UpdatedAt = DateTime.UtcNow.AddHours(2);
+                        payment.Ebill.UpdatedAt = DateTime.UtcNow;
                     }
 
                     await db.SaveChangesAsync();

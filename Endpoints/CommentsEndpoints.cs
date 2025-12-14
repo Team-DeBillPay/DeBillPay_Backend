@@ -53,7 +53,7 @@ namespace DeBillPay_Backend.Endpoints
                     EbillId = ebillId,
                     UserId = userId,
                     Text = dto.Text,
-                    CreatedAt = DateTime.UtcNow.AddHours(2)
+                    CreatedAt = DateTime.UtcNow
                 };
 
                 db.Comments.Add(comment);

@@ -431,7 +431,7 @@ public static class EditingEbillEndpoints
         {
             ebill.Status = "активний";
         }
-        ebill.UpdatedAt = DateTime.UtcNow.AddHours(2);
+        ebill.UpdatedAt = DateTime.UtcNow;
         User? actorUser = null;
 
         if (currentUser != null)

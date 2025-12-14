@@ -8,5 +8,5 @@ public class EbillHistory
     public required string ActionType { get; set; }
     public required string Message { get; set; }
 
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow.AddHours(2);
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
