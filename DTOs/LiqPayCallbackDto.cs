@@ -7,5 +7,5 @@ public class LiqPayCallbackDto
     public decimal amount { get; set; }
     public string currency { get; set; } = null!;
     public string description { get; set; } = null!;
-    public string transaction_id { get; set; } = null!;
+    public long transaction_id { get; set; }
 }
