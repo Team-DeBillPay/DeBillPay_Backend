@@ -1,32 +1,37 @@
 using DeBillPay_Backend.Data;
-using DeBillPay_Backend.Models;
 using Microsoft.EntityFrameworkCore;
+using DeBillPay_Backend.Models;
 
 namespace DeBillPay_Backend.Services;
 
-public static class NotificationService
+public class NotificationService
 {
-    public static async Task CreateAsync(
-        ApplicationDbContext db,
+    private readonly ApplicationDbContext _db;
+
+    public NotificationService(ApplicationDbContext db)
+    {
+        _db = db;
+    }
+
+    public async Task CreateAsync(
         int userId,
         string type,
         string message,
         int? ebillId = null,
         int? groupId = null)
     {
-        if (ebillId.HasValue)
+        if (ebillId.HasValue &&
+            !await _db.Ebills.AnyAsync(e => e.EbillId == ebillId.Value))
         {
-            var exists = await db.Ebills.AnyAsync(e => e.EbillId == ebillId.Value);
-            if (!exists)
-                throw new Exception($"Invalid EbillId: {ebillId}");
+            throw new Exception($"Invalid EbillId: {ebillId}");
         }
 
-        if (groupId.HasValue)
+        if (groupId.HasValue &&
+            !await _db.Groups.AnyAsync(g => g.GroupId == groupId.Value))
         {
-            var exists = await db.Groups.AnyAsync(g => g.GroupId == groupId.Value);
-            if (!exists)
-                throw new Exception($"Invalid GroupId: {groupId}");
+            throw new Exception($"Invalid GroupId: {groupId}");
         }
+
         var notif = new Notification
         {
             UserId = userId,
@@ -38,7 +43,7 @@ public static class NotificationService
             GroupId = groupId
         };
 
-        db.Notifications.Add(notif);
-        await db.SaveChangesAsync();
+        _db.Notifications.Add(notif);
+        await _db.SaveChangesAsync();
     }
 }
