@@ -8,11 +8,11 @@ public static class EmailService
 {
     public static async Task SendEmailAsync(string toEmail, string subject, string body, IConfiguration config)
     {
-        // Перевірка валідності формату email
+        // РџРµСЂРµРІС–СЂРєР° РІР°Р»С–РґРЅРѕСЃС‚С– С„РѕСЂРјР°С‚Сѓ email
         if (!MailboxAddress.TryParse(toEmail, out var parsedAddress))
         {
             Console.WriteLine($"[EmailService] Invalid email format: {toEmail}");
-            return; // просто пропускаємо відправку
+            return; // РїСЂРѕСЃС‚Рѕ РїСЂРѕРїСѓСЃРєР°С”РјРѕ РІС–РґРїСЂР°РІРєСѓ
         }
 
         try
@@ -41,7 +41,7 @@ public static class EmailService
         }
         catch (Exception ex)
         {
-            // Лог, але API не падає
+            // Р›РѕРі, Р°Р»Рµ API РЅРµ РїР°РґР°С”
             Console.WriteLine($"[EmailService] Failed to send email to {toEmail}: {ex.Message}");
         }
     }
