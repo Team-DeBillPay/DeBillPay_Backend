@@ -146,7 +146,9 @@ namespace DeBillPay_Backend.Endpoints
                     db,
                     receiverId,
                     "friend_invitation",
-                    $"Запрошення в друзі від {user.FirstName} {user.LastName}"
+                    $"Запрошення в друзі від {user.FirstName} {user.LastName}",
+                                            null,
+                        null
                 );
 
                 if (receiver != null && !string.IsNullOrWhiteSpace(receiver.Email))
