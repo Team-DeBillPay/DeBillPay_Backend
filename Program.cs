@@ -12,9 +12,6 @@ using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Logging.ClearProviders();
-builder.Logging.AddConsole();
-builder.Logging.SetMinimumLevel(LogLevel.Information);
 
 builder.Services.Configure<LiqPayOptions>(builder.Configuration.GetSection("LiqPay"));
 
@@ -97,11 +94,6 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
-
-var logger = app.Services.GetRequiredService<ILogger<Program>>();
-logger.LogInformation("Application started");
-logger.LogInformation("LiqPay Callback URL: {CallbackUrl}",
-    app.Configuration["LiqPay:ServerUrl"]);
 
 app.Use(async (context, next) =>
 {

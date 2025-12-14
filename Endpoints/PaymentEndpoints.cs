@@ -11,12 +11,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DeBillPay_Backend.Endpoints;
 
-
-public class PaymentEndpointsLogger
-{
-
-}
-
 public static class PaymentEndpoints
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -34,8 +28,6 @@ public static class PaymentEndpoints
             HttpContext httpContext,
             CreatePaymentRequestDto request) =>
         {
-            var logger = httpContext.RequestServices.GetRequiredService<ILogger<PaymentEndpointsLogger>>();
-
             var userIdClaim = httpContext.User.FindFirst(ClaimTypes.NameIdentifier) ??
                               httpContext.User.FindFirst("sub");
 
@@ -70,9 +62,6 @@ public static class PaymentEndpoints
 
             var resultUrl = $"http://localhost:5141/checks/{ebill.EbillId}";
 
-            logger.LogInformation("Creating payment: OrderId={OrderId}, Amount={Amount}, UserId={UserId}",
-                orderId, amount, userId);
-
             var (data, signature) = liqPay.CreatePaymentData(
                 amount: amount,
                 currency: ebill.Currency,
@@ -94,8 +83,6 @@ public static class PaymentEndpoints
             db.Payments.Add(payment);
             await db.SaveChangesAsync();
 
-            logger.LogInformation("Payment created in DB: PaymentId={PaymentId}", payment.PaymentId);
-
             return Results.Ok(new
             {
                 data,
@@ -111,72 +98,41 @@ public static class PaymentEndpoints
             HttpRequest request,
             IServiceProvider serviceProvider) =>
         {
-            var logger = serviceProvider.GetRequiredService<ILogger<PaymentEndpointsLogger>>();
-
-            logger.LogInformation("=== LIQPAY CALLBACK STARTED ===");
-
             try
             {
                 if (!request.HasFormContentType)
-                {
-                    logger.LogError("Callback: Expected form content");
                     return Results.BadRequest("Expected form content.");
-                }
 
                 var form = await request.ReadFormAsync();
                 var data = form["data"].ToString();
                 var signature = form["signature"].ToString();
 
-                logger.LogInformation("Callback received: Data length={DataLength}", data?.Length);
-
                 if (string.IsNullOrWhiteSpace(data) || string.IsNullOrWhiteSpace(signature))
-                {
-                    logger.LogError("Callback: Missing data or signature");
                     return Results.BadRequest("Missing data or signature.");
-                }
 
                 if (!liqPay.VerifySignature(data, signature))
-                {
-                    logger.LogError("Callback: Signature verification failed");
                     return Results.Unauthorized();
-                }
-
-                logger.LogInformation("Callback: Signature verified successfully");
 
                 string json;
                 try
                 {
                     json = Encoding.UTF8.GetString(Convert.FromBase64String(data));
-                    logger.LogInformation("Callback JSON: {Json}", json);
                 }
-                catch (Exception ex)
+                catch
                 {
-                    logger.LogError(ex, "Callback: Invalid base64 data");
                     return Results.BadRequest("Invalid base64 data.");
                 }
 
                 var callback = JsonSerializer.Deserialize<LiqPayCallbackDto>(json, JsonOptions);
                 if (callback is null || string.IsNullOrEmpty(callback.order_id))
-                {
-                    logger.LogError("Callback: Invalid callback data");
                     return Results.BadRequest("Invalid callback data.");
-                }
-
-                logger.LogInformation("Callback: OrderId={OrderId}, Status={Status}, Amount={Amount}",
-                    callback.order_id, callback.status, callback.amount);
 
                 var payment = await db.Payments
                     .Include(p => p.Ebill)
                     .FirstOrDefaultAsync(p => p.TransactionReference == callback.order_id);
 
                 if (payment is null)
-                {
-                    logger.LogError("Callback: Payment not found for OrderId={OrderId}", callback.order_id);
                     return Results.NotFound("Payment not found.");
-                }
-
-                logger.LogInformation("Callback: Found payment ID={PaymentId}, Current status={CurrentStatus}",
-                    payment.PaymentId, payment.Status);
 
                 await using var tx = await db.Database.BeginTransactionAsync();
 
@@ -187,9 +143,6 @@ public static class PaymentEndpoints
                     payment.TransactionDate = DateTime.UtcNow.AddHours(2);
                     payment.Status = callback.status;
 
-                    logger.LogInformation("Callback: Updated payment status from {OldStatus} to {NewStatus}",
-                        oldStatus, callback.status);
-
                     if ((callback.status.ToLower() == "success" || callback.status.ToLower() == "sandbox") && oldStatus != "success")
                     {
                         var participant = await db.EbillParticipants
@@ -198,14 +151,9 @@ public static class PaymentEndpoints
 
                         if (participant is null)
                         {
-                            logger.LogError("Callback: Participant not found for EbillId={EbillId}, UserId={UserId}",
-                                payment.EbillId, payment.UserId);
                             await tx.RollbackAsync();
                             return Results.NotFound("Participant record not found.");
                         }
-
-                        logger.LogInformation("Callback: Found participant - Assigned={Assigned}, Paid={Paid}, Balance={Balance}, PaymentStatus={PaymentStatus}",
-                            participant.AssignedAmount, participant.PaidAmount, participant.Balance, participant.PaymentStatus);
 
                         var newPaidAmount = Decimal.Round(participant.PaidAmount + payment.Amount, 2, MidpointRounding.AwayFromZero);
                         var newBalance = Decimal.Round(participant.AssignedAmount - newPaidAmount, 2, MidpointRounding.AwayFromZero);
@@ -213,24 +161,18 @@ public static class PaymentEndpoints
                         participant.PaidAmount = newPaidAmount;
                         participant.Balance = newBalance;
 
-                        logger.LogInformation("Callback: Updated participant - New Paid={NewPaid}, New Balance={NewBalance}",
-                            participant.PaidAmount, participant.Balance);
-
                         if (participant.Balance <= 0)
                         {
                             participant.Balance = 0;
                             participant.PaymentStatus = "погашений";
-                            logger.LogInformation("Callback: Participant fully paid (погашений)");
                         }
                         else if (participant.PaidAmount > 0)
                         {
                             participant.PaymentStatus = "частково погашений";
-                            logger.LogInformation("Callback: Participant partially paid (частково погашений)");
                         }
                         else
                         {
                             participant.PaymentStatus = "непогашений";
-                            logger.LogInformation("Callback: Participant not paid (непогашений)");
                         }
 
                         string historyAction = participant.Balance <= 0 ? "full_payment" : "partial_payment";
@@ -256,11 +198,10 @@ public static class PaymentEndpoints
                                     emailBody,
                                     config
                                 );
-                                logger.LogInformation("Callback: Email sent to {Email}", participant.User.Email);
                             }
-                            catch (Exception emailEx)
+                            catch (Exception)
                             {
-                                logger.LogError(emailEx, "Callback: Failed to send email");
+ 
                             }
                         }
 
@@ -281,27 +222,21 @@ public static class PaymentEndpoints
                         }
 
                         payment.Ebill.UpdatedAt = DateTime.UtcNow.AddHours(2);
-
-                        logger.LogInformation("Callback: Ebill status updated to {EbillStatus}", payment.Ebill.Status);
                     }
 
                     await db.SaveChangesAsync();
                     await tx.CommitAsync();
-
-                    logger.LogInformation("=== LIQPAY CALLBACK COMPLETED SUCCESSFULLY ===");
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
-                    logger.LogError(ex, "Callback: Transaction failed");
                     await tx.RollbackAsync();
                     throw;
                 }
 
                 return Results.Text("ok", "text/plain", Encoding.UTF8);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                logger.LogError(ex, "Callback: Unhandled exception");
                 return Results.Problem("Internal server error", statusCode: 500);
             }
         })
@@ -313,8 +248,6 @@ public static class PaymentEndpoints
             ApplicationDbContext db,
             HttpContext httpContext) =>
         {
-            var logger = httpContext.RequestServices.GetRequiredService<ILogger<PaymentEndpointsLogger>>();
-
             var userIdClaim = httpContext.User.FindFirst(ClaimTypes.NameIdentifier) ??
                               httpContext.User.FindFirst("sub");
 
@@ -329,8 +262,6 @@ public static class PaymentEndpoints
 
             if (payment == null)
                 return Results.NotFound();
-
-            logger.LogInformation("Status check: OrderId={OrderId}, Status={Status}", orderId, payment.Status);
 
             return Results.Ok(new
             {
