@@ -229,8 +229,8 @@ public static class CreateEbillEndpoints
                 AmountOfDept = dto.AmountOfDept,
                 Description = dto.Description,
                 Scenario = dto.Scenario.ToLower(),
-                CreatedAt = DateTime.UtcNow.AddHours(2),
-                UpdatedAt = DateTime.UtcNow.AddHours(2),
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
                 OrganizerId = organizerId
             };
 

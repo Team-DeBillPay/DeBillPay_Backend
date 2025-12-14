@@ -131,7 +131,7 @@ namespace DeBillPay_Backend.Endpoints
                 {
                     Type = "contact",
                     Status = "pending",
-                    CreatedAt = DateTime.UtcNow.AddHours(2),
+                    CreatedAt = DateTime.UtcNow,
                     SenderId = senderId,
                     ReceiverId = receiverId
                 };

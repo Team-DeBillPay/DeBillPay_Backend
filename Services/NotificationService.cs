@@ -33,7 +33,7 @@ public static class NotificationService
             Type = type,
             MessageText = message,
             Status = "unread",
-            CreatedAt = DateTime.UtcNow.AddHours(2),
+            CreatedAt = DateTime.UtcNow,
             EbillId = ebillId,
             GroupId = groupId
         };
