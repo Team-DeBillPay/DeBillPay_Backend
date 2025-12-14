@@ -95,12 +95,7 @@ public static class CreateEbillEndpoints
             return Results.Ok(ebill);
         });
 
-        app.MapPost("/api/ebills/create", async (
-     HttpContext http,
-     ApplicationDbContext db,
-     NotificationService notificationService,   // <- додати DI
-     EbillHistoryService ebillHistoryService,   // <- додати DI
-     CreateEbillDto dto) =>
+        app.MapPost("/api/ebills/create", async (HttpContext http, ApplicationDbContext db, CreateEbillDto dto) =>
         {
             var userIdClaim = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (userIdClaim == null)
@@ -382,13 +377,24 @@ public static class CreateEbillEndpoints
                     participant.UserId,
                     "added_to_ebill",
                     $"Вас додали до чеку: \"{ebill.Name}\"",
-                    ebill.EbillId
+                    ebill.EbillId,
+                    null
                 );
 
                 var user = await db.Users.FindAsync(participant.UserId);
                 if (user != null && !string.IsNullOrWhiteSpace(user.Email))
                 {
 
+                    var emailQueue = http.RequestServices.GetRequiredService<EmailQueue>();
+
+                    emailQueue.Enqueue(new EmailTask
+                    {
+                        To = user.Email,
+                        Subject = "Вас додали до чеку",
+                        Body = $"Привіт {user.FirstName},\n\nВас додали до чеку \"{ebill.Name}\".\n\nПерейдіть у додаток, щоб переглянути деталі."
+                    });
+                }
+            }
             return Results.Ok(new
             {
                 ebill.EbillId,
