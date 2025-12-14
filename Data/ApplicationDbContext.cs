@@ -121,6 +121,11 @@ namespace DeBillPay_Backend.Data
      .WithMany(e => e.Notifications)
      .HasForeignKey(n => n.EbillId)
      .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<Notification>()
+.HasOne(n => n.Group)
+.WithMany(g => g.Notifications)
+.HasForeignKey(n => n.GroupId)
+.OnDelete(DeleteBehavior.Cascade);
 
             // EbillHistory cascade
             modelBuilder.Entity<EbillHistory>()

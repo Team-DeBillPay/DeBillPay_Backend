@@ -9,4 +9,5 @@ public class Group
     public User Owner { get; set; } = null!;
 
     public ICollection<GroupMember> Members { get; set; } = new List<GroupMember>();
+    public ICollection<Notification> Notifications { get; set; } = new List<Notification>();
 }
