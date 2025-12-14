@@ -60,7 +60,7 @@ public static class PaymentEndpoints
 
             var orderId = $"ebill-{ebill.EbillId}-user-{userId}-{Guid.NewGuid():N}";
 
-            var resultUrl = $"http://localhost:5141/checks/{ebill.EbillId}";
+            var resultUrl = $"http://localhost:5173/checks/{ebill.EbillId}";
 
             var (data, signature) = liqPay.CreatePaymentData(
                 amount: amount,
@@ -184,25 +184,19 @@ public static class PaymentEndpoints
 
                         if (!string.IsNullOrWhiteSpace(participant.User.Email))
                         {
-                            try
-                            {
-                                var config = serviceProvider.GetRequiredService<IConfiguration>();
-                                string emailSubject = "Статус вашого платежу DeBillPay";
-                                string emailBody = participant.Balance <= 0
-                                    ? $"Привіт {participant.User.FirstName},\n\nВи повністю погасили свій борг по чеку \"{payment.Ebill.Name}\". Дякуємо за своєчасну оплату!"
-                                    : $"Привіт {participant.User.FirstName},\n\nВи частково погасили свій борг по чеку \"{payment.Ebill.Name}\". Залишок до оплати: {participant.Balance} {payment.Ebill.Currency}.";
+                            var emailQueue = serviceProvider.GetRequiredService<EmailQueue>();
 
-                                await EmailService.SendEmailAsync(
-                                    participant.User.Email,
-                                    emailSubject,
-                                    emailBody,
-                                    config
-                                );
-                            }
-                            catch (Exception)
+                            string emailSubject = "Статус вашого платежу DeBillPay";
+                            string emailBody = participant.Balance <= 0
+                                ? $"Привіт {participant.User.FirstName},\n\nВи повністю погасили свій борг по чеку \"{payment.Ebill.Name}\". Дякуємо за своєчасну оплату!"
+                                : $"Привіт {participant.User.FirstName},\n\nВи частково погасили свій борг по чеку \"{payment.Ebill.Name}\". Залишок до оплати: {participant.Balance} {payment.Ebill.Currency}.";
+
+                            emailQueue.Enqueue(new EmailTask
                             {
- 
-                            }
+                                To = participant.User.Email,
+                                Subject = emailSubject,
+                                Body = emailBody
+                            });
                         }
 
                         var allParticipants = await db.EbillParticipants
@@ -226,14 +220,14 @@ public static class PaymentEndpoints
 
                     await db.SaveChangesAsync();
                     await tx.CommitAsync();
+
+                    return Results.Text("ok", "text/plain", Encoding.UTF8);
                 }
                 catch (Exception)
                 {
                     await tx.RollbackAsync();
                     throw;
                 }
-
-                return Results.Text("ok", "text/plain", Encoding.UTF8);
             }
             catch (Exception)
             {
