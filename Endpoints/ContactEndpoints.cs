@@ -150,7 +150,9 @@ namespace DeBillPay_Backend.Endpoints
                 await notificationService.CreateAsync(
                     receiverId,
                     "friend_invitation",
-                    $"Çàïðîøåííÿ"
+                    $"Запрошення в друзі від {user.FirstName} {user.LastName}",
+                                            null,
+                        null
                 );
 
                 // Â³äïðàâêà email (íå îáîâ'ÿçêîâî ïîâåðòàòè ðåçóëüòàò)
