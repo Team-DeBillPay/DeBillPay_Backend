@@ -354,7 +354,40 @@ public static class CreateEbillEndpoints
                             : "активний";
             db.Ebills.Add(ebill);
             await db.SaveChangesAsync();
-            
+            await EbillHistoryService.AddAsync(
+    db,
+    ebill.EbillId,
+    organizerId,
+    "created",
+    $"{organizer.FirstName} створив(-ла) чек"
+);
+            foreach (var participant in ebill.Participants)
+            {
+
+                if (participant.UserId == organizerId)
+                    continue;
+                var addedUser = await db.Users.FindAsync(participant.UserId);
+                if (addedUser != null)
+                {
+                    await EbillHistoryService.AddAsync(
+                        db,
+                        ebill.EbillId,
+                        organizerId,
+                        "added_participant",
+                        $"{organizer.FirstName} додав(-ла) {addedUser.FirstName} {addedUser.LastName} до чеку"
+                    );
+                }
+                await NotificationService.CreateAsync(
+                    db,
+                    participant.UserId,
+                    "added_to_ebill",
+                    $"Вас додали до чеку: \"{ebill.Name}\"",
+                    ebill.EbillId
+                );
+
+                var user = await db.Users.FindAsync(participant.UserId);
+                if (user != null && !string.IsNullOrWhiteSpace(user.Email))
+                {
 
             return Results.Ok(new
             {

@@ -173,6 +173,7 @@ namespace DeBillPay_Backend.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer");
 
+
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("ParticipantId"));
 
                     b.Property<decimal>("AssignedAmount")

@@ -292,6 +292,7 @@ public static class EditingEbillEndpoints
                 userMadeChanges = true;
             }
 
+
             if (dto.AmountOfDept.HasValue)
             {
                 if (scenario == "індивідуальні суми")
@@ -437,7 +438,13 @@ public static class EditingEbillEndpoints
             return Results.BadRequest(new { error = "User record missing" });
 
         // Логування
-        
+        await EbillHistoryService.AddAsync(
+            db,
+            ebillId,
+            userId,
+            "removed_participant",
+            $"{actorUser.FirstName} видалив(-ла) {participantToRemove.User.FirstName} з чеку"
+        );
 
 
         await db.SaveChangesAsync();

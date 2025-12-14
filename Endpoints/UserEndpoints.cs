@@ -64,7 +64,6 @@ namespace DeBillPay_Backend.Endpoints
                 return Results.Ok("User registered successfully");
             });
 
-
             app.MapPost("/api/auth/login", async (ApplicationDbContext db, IConfiguration config, LoginDto dto) =>
             {
                 User? user = null;
