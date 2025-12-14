@@ -150,7 +150,7 @@ namespace DeBillPay_Backend.Endpoints
                 await notificationService.CreateAsync(
                     receiverId,
                     "friend_invitation",
-                    $"Запрошення в друзі від {user.FirstName} {user.LastName}"
+                    $"Запрошення в друзі від"
                 );
 
                 // Відправка email (не обов'язково повертати результат)
