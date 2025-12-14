@@ -51,12 +51,14 @@ public static class PaymentEndpoints
             if (participant is null)
                 return Results.NotFound("Participant not found for this user and ebill.");
 
-            var amount = request.Amount ?? participant.Balance;
+            var remainingToPay = participant.AssignedAmount - participant.Balance;
+
+            var amount = request.Amount ?? remainingToPay;
             if (amount <= 0)
                 return Results.BadRequest("Amount must be greater than zero.");
 
-            if (amount > participant.Balance)
-                return Results.BadRequest($"Amount ({amount}) exceeds your remaining balance ({participant.Balance}).");
+            if (amount > remainingToPay)
+                return Results.BadRequest($"Amount ({amount}) exceeds your remaining balance ({remainingToPay}).");
 
             var orderId = $"ebill-{ebill.EbillId}-user-{userId}-{Guid.NewGuid():N}";
 
@@ -155,18 +157,15 @@ public static class PaymentEndpoints
                             return Results.NotFound("Participant record not found.");
                         }
 
-                        var newPaidAmount = Decimal.Round(participant.PaidAmount + payment.Amount, 2, MidpointRounding.AwayFromZero);
-                        var newBalance = Decimal.Round(participant.AssignedAmount - newPaidAmount, 2, MidpointRounding.AwayFromZero);
+                        participant.Balance = Decimal.Round(participant.Balance + payment.Amount, 2, MidpointRounding.AwayFromZero);
+                        participant.PaidAmount = participant.Balance;
 
-                        participant.PaidAmount = newPaidAmount;
-                        participant.Balance = newBalance;
-
-                        if (participant.Balance <= 0)
+                        if (participant.Balance >= participant.AssignedAmount)
                         {
-                            participant.Balance = 0;
+                            participant.Balance = participant.AssignedAmount;
                             participant.PaymentStatus = "погашений";
                         }
-                        else if (participant.PaidAmount > 0)
+                        else if (participant.Balance > 0)
                         {
                             participant.PaymentStatus = "частково погашений";
                         }
@@ -175,8 +174,8 @@ public static class PaymentEndpoints
                             participant.PaymentStatus = "непогашений";
                         }
 
-                        string historyAction = participant.Balance <= 0 ? "full_payment" : "partial_payment";
-                        string historyMessage = participant.Balance <= 0
+                        string historyAction = participant.Balance >= participant.AssignedAmount ? "full_payment" : "partial_payment";
+                        string historyMessage = participant.Balance >= participant.AssignedAmount
                             ? $"{participant.User.FirstName} повністю погасив(-ла) свій борг"
                             : $"{participant.User.FirstName} частково погасив(-ла) свій борг";
 
@@ -187,9 +186,9 @@ public static class PaymentEndpoints
                             var emailQueue = serviceProvider.GetRequiredService<EmailQueue>();
 
                             string emailSubject = "Статус вашого платежу DeBillPay";
-                            string emailBody = participant.Balance <= 0
+                            string emailBody = participant.Balance >= participant.AssignedAmount
                                 ? $"Привіт {participant.User.FirstName},\n\nВи повністю погасили свій борг по чеку \"{payment.Ebill.Name}\". Дякуємо за своєчасну оплату!"
-                                : $"Привіт {participant.User.FirstName},\n\nВи частково погасили свій борг по чеку \"{payment.Ebill.Name}\". Залишок до оплати: {participant.Balance} {payment.Ebill.Currency}.";
+                                : $"Привіт {participant.User.FirstName},\n\nВи частково погасили свій борг по чеку \"{payment.Ebill.Name}\". Залишок до оплати: {participant.AssignedAmount - participant.Balance} {payment.Ebill.Currency}.";
 
                             emailQueue.Enqueue(new EmailTask
                             {
@@ -203,8 +202,8 @@ public static class PaymentEndpoints
                             .Where(p => p.EbillId == payment.EbillId)
                             .ToListAsync();
 
-                        bool allPaid = allParticipants.All(p => p.PaymentStatus == "погашений" || p.Balance <= 0);
-                        bool anyPartial = allParticipants.Any(p => p.PaymentStatus == "частково погашений");
+                        bool allPaid = allParticipants.All(p => p.Balance >= p.AssignedAmount);
+                        bool anyPartial = allParticipants.Any(p => p.Balance > 0 && p.Balance < p.AssignedAmount);
 
                         if (allPaid)
                         {
@@ -234,7 +233,7 @@ public static class PaymentEndpoints
                 return Results.Problem("Internal server error", statusCode: 500);
             }
         })
-        .AllowAnonymous()
+                .AllowAnonymous()
         .DisableAntiforgery();
 
         group.MapGet("/status/{orderId}", [Authorize] async (
