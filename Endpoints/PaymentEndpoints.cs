@@ -180,7 +180,21 @@ public static class PaymentEndpoints
                             : $"{participant.User.FirstName} частково погасив(-ла) свій борг";
 
                         await EbillHistoryService.AddAsync(db, payment.EbillId, participant.UserId, historyAction, historyMessage);
+                        string notifType = participant.Balance >= participant.AssignedAmount
+    ? "payment_full"
+    : "payment_partial";
 
+                        string notifMessage = participant.Balance >= participant.AssignedAmount
+                            ? $"Ви повністю погасили борг по чеку \"{payment.Ebill.Name}\""
+                            : $"Ви частково погасили борг по чеку \"{payment.Ebill.Name}\". Залишок: {participant.AssignedAmount - participant.Balance} {payment.Ebill.Currency}";
+
+                        await NotificationService.CreateAsync(
+                            db,
+                            participant.UserId,
+                            notifType,
+                            notifMessage,
+                            ebillId: payment.EbillId
+                        );
                         if (!string.IsNullOrWhiteSpace(participant.User.Email))
                         {
                             var emailQueue = serviceProvider.GetRequiredService<EmailQueue>();

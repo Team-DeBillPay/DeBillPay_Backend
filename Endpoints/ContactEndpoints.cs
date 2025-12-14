@@ -137,6 +137,7 @@ namespace DeBillPay_Backend.Endpoints
                 };
 
                 db.Invitations.Add(invite);
+                await db.SaveChangesAsync();
                 var user = await db.Users.FindAsync(senderId);
                 if (user is null)
                     return Results.BadRequest("Sender user record not found");
