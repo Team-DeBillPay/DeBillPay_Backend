@@ -163,31 +163,32 @@ public static class PaymentEndpoints
                         if (participant.Balance >= participant.AssignedAmount)
                         {
                             participant.Balance = participant.AssignedAmount;
-                            participant.PaymentStatus = "погашений";
+                            participant.PaymentStatus = "РїРѕРіР°С€РµРЅРёР№";
                         }
                         else if (participant.Balance > 0)
                         {
-                            participant.PaymentStatus = "частково погашений";
+                            participant.PaymentStatus = "С‡Р°СЃС‚РєРѕРІРѕ РїРѕРіР°С€РµРЅРёР№";
                         }
                         else
                         {
-                            participant.PaymentStatus = "непогашений";
+                            participant.PaymentStatus = "РЅРµРїРѕРіР°С€РµРЅРёР№";
                         }
 
                         string historyAction = participant.Balance >= participant.AssignedAmount ? "full_payment" : "partial_payment";
                         string historyMessage = participant.Balance >= participant.AssignedAmount
-                            ? $"{participant.User.FirstName} повністю погасив(-ла) свій борг"
-                            : $"{participant.User.FirstName} частково погасив(-ла) свій борг";
+                            ? $"{participant.User.FirstName} РїРѕРІРЅС–СЃС‚СЋ РїРѕРіР°СЃРёРІ(-Р»Р°) СЃРІС–Р№ Р±РѕСЂРі"
+                            : $"{participant.User.FirstName} С‡Р°СЃС‚РєРѕРІРѕ РїРѕРіР°СЃРёРІ(-Р»Р°) СЃРІС–Р№ Р±РѕСЂРі";
 
-                        await EbillHistoryService.AddAsync(db, payment.EbillId, participant.UserId, historyAction, historyMessage);
                         string notifType = participant.Balance >= participant.AssignedAmount
     ? "payment_full"
     : "payment_partial";
 
                         string notifMessage = participant.Balance >= participant.AssignedAmount
-                            ? $"Ви повністю погасили борг по чеку \"{payment.Ebill.Name}\""
-                            : $"Ви частково погасили борг по чеку \"{payment.Ebill.Name}\". Залишок: {participant.AssignedAmount - participant.Balance} {payment.Ebill.Currency}";
+                            ? $"Р’Рё РїРѕРІРЅС–СЃС‚СЋ РїРѕРіР°СЃРёР»Рё Р±РѕСЂРі РїРѕ С‡РµРєСѓ \"{payment.Ebill.Name}\""
+                            : $"Р’Рё С‡Р°СЃС‚РєРѕРІРѕ РїРѕРіР°СЃРёР»Рё Р±РѕСЂРі РїРѕ С‡РµРєСѓ \"{payment.Ebill.Name}\". Р—Р°Р»РёС€РѕРє: {participant.AssignedAmount - participant.Balance} {payment.Ebill.Currency}";
 
+                        await EbillHistoryService.AddAsync(db, payment.EbillId, participant.UserId, historyAction, historyMessage);
+                        
                         await NotificationService.CreateAsync(
                             db,
                             participant.UserId,
@@ -200,10 +201,10 @@ public static class PaymentEndpoints
                         {
                             var emailQueue = serviceProvider.GetRequiredService<EmailQueue>();
 
-                            string emailSubject = "Статус вашого платежу DeBillPay";
+                            string emailSubject = "РЎС‚Р°С‚СѓСЃ РІР°С€РѕРіРѕ РїР»Р°С‚РµР¶Сѓ DeBillPay";
                             string emailBody = participant.Balance >= participant.AssignedAmount
-                                ? $"Привіт {participant.User.FirstName},\n\nВи повністю погасили свій борг по чеку \"{payment.Ebill.Name}\". Дякуємо за своєчасну оплату!"
-                                : $"Привіт {participant.User.FirstName},\n\nВи частково погасили свій борг по чеку \"{payment.Ebill.Name}\". Залишок до оплати: {participant.AssignedAmount - participant.Balance} {payment.Ebill.Currency}.";
+                                ? $"РџСЂРёРІС–С‚ {participant.User.FirstName},\n\nР’Рё РїРѕРІРЅС–СЃС‚СЋ РїРѕРіР°СЃРёР»Рё СЃРІС–Р№ Р±РѕСЂРі РїРѕ С‡РµРєСѓ \"{payment.Ebill.Name}\". Р”СЏРєСѓС”РјРѕ Р·Р° СЃРІРѕС”С‡Р°СЃРЅСѓ РѕРїР»Р°С‚Сѓ!"
+                                : $"РџСЂРёРІС–С‚ {participant.User.FirstName},\n\nР’Рё С‡Р°СЃС‚РєРѕРІРѕ РїРѕРіР°СЃРёР»Рё СЃРІС–Р№ Р±РѕСЂРі РїРѕ С‡РµРєСѓ \"{payment.Ebill.Name}\". Р—Р°Р»РёС€РѕРє РґРѕ РѕРїР»Р°С‚Рё: {participant.AssignedAmount - participant.Balance} {payment.Ebill.Currency}.";
 
                             emailQueue.Enqueue(new EmailTask
                             {
@@ -222,11 +223,11 @@ public static class PaymentEndpoints
 
                         if (allPaid)
                         {
-                            payment.Ebill.Status = "закритий";
+                            payment.Ebill.Status = "Р·Р°РєСЂРёС‚РёР№";
                         }
                         else if (anyPartial)
                         {
-                            payment.Ebill.Status = "активний";
+                            payment.Ebill.Status = "Р°РєС‚РёРІРЅРёР№";
                         }
 
                         payment.Ebill.UpdatedAt = DateTime.UtcNow;
