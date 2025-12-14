@@ -19,7 +19,8 @@ public class LiqPayService
         decimal amount,
         string currency,
         string description,
-        string orderId)
+        string orderId,
+        string? resultUrl = null) 
     {
         var payload = new
         {
@@ -32,7 +33,7 @@ public class LiqPayService
             order_id = orderId,
             sandbox = _options.Sandbox ? 1 : 0,
             server_url = _options.ServerUrl,
-            result_url = _options.ResultUrl
+            result_url = resultUrl ?? _options.ResultUrl 
         };
 
         var json = JsonSerializer.Serialize(payload);

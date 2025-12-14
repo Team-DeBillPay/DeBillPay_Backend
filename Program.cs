@@ -11,6 +11,11 @@ using DeBillPay_Backend.Configuration;
 using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.SetMinimumLevel(LogLevel.Information);
+
 builder.Services.Configure<LiqPayOptions>(builder.Configuration.GetSection("LiqPay"));
 
 builder.WebHost.UseUrls("http://0.0.0.0:5141");
@@ -59,6 +64,7 @@ builder.Services.AddSwaggerGen(c =>
         }
     });
 });
+
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
@@ -90,8 +96,13 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
-
 var app = builder.Build();
+
+var logger = app.Services.GetRequiredService<ILogger<Program>>();
+logger.LogInformation("Application started");
+logger.LogInformation("LiqPay Callback URL: {CallbackUrl}",
+    app.Configuration["LiqPay:ServerUrl"]);
+
 app.Use(async (context, next) =>
 {
     try
@@ -132,11 +143,12 @@ app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "DeBillPay API v1");
-    c.RoutePrefix = "swagger"; 
+    c.RoutePrefix = "swagger";
 });
 
 app.UseAuthentication();
 app.UseAuthorization();
+
 app.MapContactEndpoints();
 app.MapInvitationEndpoints();
 app.MapUserEndpoints();
@@ -145,7 +157,8 @@ app.MapCreateEbillEndpoints();
 app.MapNotificationEndpoints();
 app.MapEbillHistoryEndpoints();
 app.MapGroupsEndpoints();
-app.MapPaymentEndpoints();
 app.MapCommentsEndpoints();
 app.MapAnalyticsEndpoints();
+app.MapPaymentEndpoints();
+
 app.Run();

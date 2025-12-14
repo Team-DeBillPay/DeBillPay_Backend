@@ -11,8 +11,19 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DeBillPay_Backend.Endpoints;
 
+
+public class PaymentEndpointsLogger
+{
+
+}
+
 public static class PaymentEndpoints
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     public static void MapPaymentEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/payments");
@@ -23,6 +34,8 @@ public static class PaymentEndpoints
             HttpContext httpContext,
             CreatePaymentRequestDto request) =>
         {
+            var logger = httpContext.RequestServices.GetRequiredService<ILogger<PaymentEndpointsLogger>>();
+
             var userIdClaim = httpContext.User.FindFirst(ClaimTypes.NameIdentifier) ??
                               httpContext.User.FindFirst("sub");
 
@@ -51,15 +64,21 @@ public static class PaymentEndpoints
                 return Results.BadRequest("Amount must be greater than zero.");
 
             if (amount > participant.Balance)
-                return Results.BadRequest("Amount exceeds your remaining balance.");
+                return Results.BadRequest($"Amount ({amount}) exceeds your remaining balance ({participant.Balance}).");
 
             var orderId = $"ebill-{ebill.EbillId}-user-{userId}-{Guid.NewGuid():N}";
+
+            var resultUrl = $"http://localhost:5141/checks/{ebill.EbillId}";
+
+            logger.LogInformation("Creating payment: OrderId={OrderId}, Amount={Amount}, UserId={UserId}",
+                orderId, amount, userId);
 
             var (data, signature) = liqPay.CreatePaymentData(
                 amount: amount,
                 currency: ebill.Currency,
                 description: ebill.Name,
-                orderId: orderId
+                orderId: orderId,
+                resultUrl: resultUrl
             );
 
             var payment = new Payment
@@ -75,131 +94,252 @@ public static class PaymentEndpoints
             db.Payments.Add(payment);
             await db.SaveChangesAsync();
 
+            logger.LogInformation("Payment created in DB: PaymentId={PaymentId}", payment.PaymentId);
+
             return Results.Ok(new
             {
                 data,
-                signature
+                signature,
+                paymentId = payment.PaymentId,
+                orderId = orderId
             });
         });
 
         group.MapPost("/callback", async (
             ApplicationDbContext db,
             LiqPayService liqPay,
-            HttpRequest request) =>
+            HttpRequest request,
+            IServiceProvider serviceProvider) =>
         {
-            if (!request.HasFormContentType)
-                return Results.BadRequest("Expected form content.");
+            var logger = serviceProvider.GetRequiredService<ILogger<PaymentEndpointsLogger>>();
 
-            var form = await request.ReadFormAsync();
-            var data = form["data"].ToString();
-            var signature = form["signature"].ToString();
+            logger.LogInformation("=== LIQPAY CALLBACK STARTED ===");
 
-            if (string.IsNullOrWhiteSpace(data) || string.IsNullOrWhiteSpace(signature))
-                return Results.BadRequest("Missing data or signature.");
-
-            if (!liqPay.VerifySignature(data, signature))
-                return Results.Unauthorized();
-
-            string json;
             try
             {
-                json = Encoding.UTF8.GetString(Convert.FromBase64String(data));
-            }
-            catch
-            {
-                return Results.BadRequest("Invalid base64 data.");
-            }
+                if (!request.HasFormContentType)
+                {
+                    logger.LogError("Callback: Expected form content");
+                    return Results.BadRequest("Expected form content.");
+                }
 
-            var callback = JsonSerializer.Deserialize<LiqPayCallbackDto>(json);
-            if (callback is null || string.IsNullOrEmpty(callback.order_id))
-                return Results.BadRequest("Invalid callback data.");
+                var form = await request.ReadFormAsync();
+                var data = form["data"].ToString();
+                var signature = form["signature"].ToString();
+
+                logger.LogInformation("Callback received: Data length={DataLength}", data?.Length);
+
+                if (string.IsNullOrWhiteSpace(data) || string.IsNullOrWhiteSpace(signature))
+                {
+                    logger.LogError("Callback: Missing data or signature");
+                    return Results.BadRequest("Missing data or signature.");
+                }
+
+                if (!liqPay.VerifySignature(data, signature))
+                {
+                    logger.LogError("Callback: Signature verification failed");
+                    return Results.Unauthorized();
+                }
+
+                logger.LogInformation("Callback: Signature verified successfully");
+
+                string json;
+                try
+                {
+                    json = Encoding.UTF8.GetString(Convert.FromBase64String(data));
+                    logger.LogInformation("Callback JSON: {Json}", json);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Callback: Invalid base64 data");
+                    return Results.BadRequest("Invalid base64 data.");
+                }
+
+                var callback = JsonSerializer.Deserialize<LiqPayCallbackDto>(json, JsonOptions);
+                if (callback is null || string.IsNullOrEmpty(callback.order_id))
+                {
+                    logger.LogError("Callback: Invalid callback data");
+                    return Results.BadRequest("Invalid callback data.");
+                }
+
+                logger.LogInformation("Callback: OrderId={OrderId}, Status={Status}, Amount={Amount}",
+                    callback.order_id, callback.status, callback.amount);
+
+                var payment = await db.Payments
+                    .Include(p => p.Ebill)
+                    .FirstOrDefaultAsync(p => p.TransactionReference == callback.order_id);
+
+                if (payment is null)
+                {
+                    logger.LogError("Callback: Payment not found for OrderId={OrderId}", callback.order_id);
+                    return Results.NotFound("Payment not found.");
+                }
+
+                logger.LogInformation("Callback: Found payment ID={PaymentId}, Current status={CurrentStatus}",
+                    payment.PaymentId, payment.Status);
+
+                await using var tx = await db.Database.BeginTransactionAsync();
+
+                try
+                {
+                    var oldStatus = payment.Status;
+
+                    payment.TransactionDate = DateTime.UtcNow.AddHours(2);
+                    payment.Status = callback.status;
+
+                    logger.LogInformation("Callback: Updated payment status from {OldStatus} to {NewStatus}",
+                        oldStatus, callback.status);
+
+                    if (callback.status.ToLower() == "success" && oldStatus != "success")
+                    {
+                        var participant = await db.EbillParticipants
+                            .Include(p => p.User)
+                            .FirstOrDefaultAsync(p => p.EbillId == payment.EbillId && p.UserId == payment.UserId);
+
+                        if (participant is null)
+                        {
+                            logger.LogError("Callback: Participant not found for EbillId={EbillId}, UserId={UserId}",
+                                payment.EbillId, payment.UserId);
+                            await tx.RollbackAsync();
+                            return Results.NotFound("Participant record not found.");
+                        }
+
+                        logger.LogInformation("Callback: Found participant - Assigned={Assigned}, Paid={Paid}, Balance={Balance}, PaymentStatus={PaymentStatus}",
+                            participant.AssignedAmount, participant.PaidAmount, participant.Balance, participant.PaymentStatus);
+
+                        var newPaidAmount = Decimal.Round(participant.PaidAmount + payment.Amount, 2, MidpointRounding.AwayFromZero);
+                        var newBalance = Decimal.Round(participant.AssignedAmount - newPaidAmount, 2, MidpointRounding.AwayFromZero);
+
+                        participant.PaidAmount = newPaidAmount;
+                        participant.Balance = newBalance;
+
+                        logger.LogInformation("Callback: Updated participant - New Paid={NewPaid}, New Balance={NewBalance}",
+                            participant.PaidAmount, participant.Balance);
+
+                        if (participant.Balance <= 0)
+                        {
+                            participant.Balance = 0;
+                            participant.PaymentStatus = "погашений";
+                            logger.LogInformation("Callback: Participant fully paid (погашений)");
+                        }
+                        else if (participant.PaidAmount > 0)
+                        {
+                            participant.PaymentStatus = "частково погашений";
+                            logger.LogInformation("Callback: Participant partially paid (частково погашений)");
+                        }
+                        else
+                        {
+                            participant.PaymentStatus = "непогашений";
+                            logger.LogInformation("Callback: Participant not paid (непогашений)");
+                        }
+
+                        string historyAction = participant.Balance <= 0 ? "full_payment" : "partial_payment";
+                        string historyMessage = participant.Balance <= 0
+                            ? $"{participant.User.FirstName} повністю погасив(-ла) свій борг"
+                            : $"{participant.User.FirstName} частково погасив(-ла) свій борг";
+
+                        await EbillHistoryService.AddAsync(db, payment.EbillId, participant.UserId, historyAction, historyMessage);
+
+                        if (!string.IsNullOrWhiteSpace(participant.User.Email))
+                        {
+                            try
+                            {
+                                var config = serviceProvider.GetRequiredService<IConfiguration>();
+                                string emailSubject = "Статус вашого платежу DeBillPay";
+                                string emailBody = participant.Balance <= 0
+                                    ? $"Привіт {participant.User.FirstName},\n\nВи повністю погасили свій борг по чеку \"{payment.Ebill.Name}\". Дякуємо за своєчасну оплату!"
+                                    : $"Привіт {participant.User.FirstName},\n\nВи частково погасили свій борг по чеку \"{payment.Ebill.Name}\". Залишок до оплати: {participant.Balance} {payment.Ebill.Currency}.";
+
+                                await EmailService.SendEmailAsync(
+                                    participant.User.Email,
+                                    emailSubject,
+                                    emailBody,
+                                    config
+                                );
+                                logger.LogInformation("Callback: Email sent to {Email}", participant.User.Email);
+                            }
+                            catch (Exception emailEx)
+                            {
+                                logger.LogError(emailEx, "Callback: Failed to send email");
+                            }
+                        }
+
+                        var allParticipants = await db.EbillParticipants
+                            .Where(p => p.EbillId == payment.EbillId)
+                            .ToListAsync();
+
+                        bool allPaid = allParticipants.All(p => p.PaymentStatus == "погашений" || p.Balance <= 0);
+                        bool anyPartial = allParticipants.Any(p => p.PaymentStatus == "частково погашений");
+
+                        if (allPaid)
+                        {
+                            payment.Ebill.Status = "закритий";
+                        }
+                        else if (anyPartial)
+                        {
+                            payment.Ebill.Status = "активний";
+                        }
+
+                        payment.Ebill.UpdatedAt = DateTime.UtcNow.AddHours(2);
+
+                        logger.LogInformation("Callback: Ebill status updated to {EbillStatus}", payment.Ebill.Status);
+                    }
+
+                    await db.SaveChangesAsync();
+                    await tx.CommitAsync();
+
+                    logger.LogInformation("=== LIQPAY CALLBACK COMPLETED SUCCESSFULLY ===");
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Callback: Transaction failed");
+                    await tx.RollbackAsync();
+                    throw;
+                }
+
+                return Results.Text("ok", "text/plain", Encoding.UTF8);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Callback: Unhandled exception");
+                return Results.Problem("Internal server error", statusCode: 500);
+            }
+        })
+        .AllowAnonymous()
+        .DisableAntiforgery();
+
+        group.MapGet("/status/{orderId}", [Authorize] async (
+            string orderId,
+            ApplicationDbContext db,
+            HttpContext httpContext) =>
+        {
+            var logger = httpContext.RequestServices.GetRequiredService<ILogger<PaymentEndpointsLogger>>();
+
+            var userIdClaim = httpContext.User.FindFirst(ClaimTypes.NameIdentifier) ??
+                              httpContext.User.FindFirst("sub");
+
+            if (userIdClaim is null)
+                return Results.Unauthorized();
+
+            var userId = int.Parse(userIdClaim.Value);
 
             var payment = await db.Payments
                 .Include(p => p.Ebill)
-                .FirstOrDefaultAsync(p => p.TransactionReference == callback.order_id);
+                .FirstOrDefaultAsync(p => p.TransactionReference == orderId && p.UserId == userId);
 
-            if (payment is null)
-                return Results.NotFound("Payment not found.");
+            if (payment == null)
+                return Results.NotFound();
 
-            await using var tx = await db.Database.BeginTransactionAsync();
+            logger.LogInformation("Status check: OrderId={OrderId}, Status={Status}", orderId, payment.Status);
 
-            try
+            return Results.Ok(new
             {
-                var alreadySuccess = payment.Status == "success";
-
-                payment.TransactionDate = DateTime.UtcNow.AddHours(2);
-                payment.Status = callback.status;
-
-                if (callback.status == "success" && !alreadySuccess)
-                {
-                    var participant = await db.EbillParticipants
-                        .Include(p => p.User)
-                        .FirstOrDefaultAsync(p => p.EbillId == payment.EbillId && p.UserId == payment.UserId);
-
-                    if (participant is null)
-                    {
-                        await tx.RollbackAsync();
-                        return Results.NotFound("Participant record not found.");
-                    }
-
-                    participant.PaidAmount = Decimal.Round(participant.PaidAmount + payment.Amount, 2, MidpointRounding.AwayFromZero);
-                    participant.Balance = Decimal.Round(participant.AssignedAmount - participant.PaidAmount, 2, MidpointRounding.AwayFromZero);
-
-                    string historyAction;
-                    string historyMessage;
-                    string emailSubject = "Статус вашого платежу DeBillPay";
-                    string emailBody;
-
-                    if (participant.Balance <= 0)
-                    {
-                        participant.Balance = 0;
-                        participant.PaymentStatus = "paid";
-
-                        historyAction = "full_payment";
-                        historyMessage = $"{participant.User.FirstName} повністю погасив(-ла) свій борг";
-
-                        emailBody = $"Привіт {participant.User.FirstName},\n\nВи повністю погасили свій борг по чеку \"{payment.Ebill.Name}\". Дякуємо за своєчасну оплату!";
-                    }
-                    else
-                    {
-                        participant.PaymentStatus = "partial";
-
-                        historyAction = "partial_payment";
-                        historyMessage = $"{participant.User.FirstName} частково погасив(-ла) свій борг";
-
-                        emailBody = $"Привіт {participant.User.FirstName},\n\nВи частково погасили свій борг по чеку \"{payment.Ebill.Name}\". Залишок до оплати: {participant.Balance:C}.";
-                    }
-
-                    await EbillHistoryService.AddAsync(db, payment.EbillId, participant.UserId, historyAction, historyMessage);
-
-                    if (!string.IsNullOrWhiteSpace(participant.User.Email))
-                    {
-                        var config = app.Services.GetRequiredService<IConfiguration>();
-                        await EmailService.SendEmailAsync(
-                            participant.User.Email,
-                            emailSubject,
-                            emailBody,
-                            config
-                        );
-                    }
-
-                    var anyRemaining = await db.EbillParticipants
-                        .AnyAsync(p => p.EbillId == payment.EbillId && p.Balance > 0);
-
-                    payment.Ebill.Status = anyRemaining ? "partial" : "paid";
-                }
-
-                await db.SaveChangesAsync();
-                await tx.CommitAsync();
-            }
-            catch
-            {
-                await tx.RollbackAsync();
-                throw;
-            }
-
-            return Results.Ok();
-        })
-        .AllowAnonymous();
+                payment.Status,
+                payment.Amount,
+                payment.TransactionDate,
+                EbillId = payment.EbillId,
+                EbillStatus = payment.Ebill?.Status
+            });
+        });
     }
 }

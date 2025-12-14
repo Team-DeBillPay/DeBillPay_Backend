@@ -252,7 +252,7 @@ public static class CreateEbillEndpoints
                                 UserId = p.UserId,
                                 AssignedAmount = Math.Round(share),
                                 PaidAmount = 0,
-                                Balance = 0, 
+                                Balance = Math.Round(share),
                                 IsAdminRights = false,
                                 IsEditorRights = false
                             });
@@ -263,7 +263,7 @@ public static class CreateEbillEndpoints
                             UserId = organizerId,
                             AssignedAmount = Math.Round(share),
                             PaidAmount = 0,
-                            Balance = amount,
+                            Balance = Math.Round(share),
                             IsAdminRights = true,
                             IsEditorRights = true
                         });
@@ -283,7 +283,7 @@ public static class CreateEbillEndpoints
                                 UserId = p.UserId,
                                 AssignedAmount = Math.Round(p.Amount ?? 0),
                                 PaidAmount = p.PaidAmount,
-                                Balance = p.PaidAmount,
+                                Balance = Math.Round(p.Amount ?? 0) - p.PaidAmount,
                                 IsAdminRights = p.UserId == organizerId,
                                 IsEditorRights = p.UserId == organizerId
                             });
