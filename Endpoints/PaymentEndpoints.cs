@@ -190,7 +190,7 @@ public static class PaymentEndpoints
                     logger.LogInformation("Callback: Updated payment status from {OldStatus} to {NewStatus}",
                         oldStatus, callback.status);
 
-                    if (callback.status.ToLower() == "success" && oldStatus != "success")
+                    if ((callback.status.ToLower() == "success" || callback.status.ToLower() == "sandbox") && oldStatus != "success")
                     {
                         var participant = await db.EbillParticipants
                             .Include(p => p.User)
