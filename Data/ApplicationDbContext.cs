@@ -24,9 +24,7 @@ namespace DeBillPay_Backend.Data
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
-
-            
-
+ 
             // USERS
             modelBuilder.Entity<User>()
                 .HasMany(u => u.EbillsOrganized)
