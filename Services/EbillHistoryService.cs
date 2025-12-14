@@ -1,32 +1,27 @@
+using System.Text.Json;
 using DeBillPay_Backend.Data;
-using Microsoft.EntityFrameworkCore;
 using DeBillPay_Backend.Models;
-
-namespace DeBillPay_Backend.Services;
-
-public class EbillHistoryService
+namespace DeBillPay_Backend.Services
 {
-    private readonly ApplicationDbContext _db;
-
-    public EbillHistoryService(ApplicationDbContext db)
+    public static class EbillHistoryService
     {
-        _db = db;
-    }
-
-    public async Task AddAsync(
-        int ebillId,
-        int userId,
-        string actionType,
-        string message)
-    {
-        _db.EbillHistories.Add(new EbillHistory
+        public static async Task AddAsync(
+            ApplicationDbContext db,
+            int ebillId,
+            int userId,
+            string actionType,
+            string message)
         {
-            EbillId = ebillId,
-            UserId = userId,
-            ActionType = actionType,
-            Message = message
-        });
+            var entry = new EbillHistory
+            {
+                EbillId = ebillId,
+                UserId = userId,
+                ActionType = actionType,
+                Message = message
+            };
 
-        await _db.SaveChangesAsync();
+            db.EbillHistories.Add(entry);
+            await db.SaveChangesAsync();
+        }
     }
 }
