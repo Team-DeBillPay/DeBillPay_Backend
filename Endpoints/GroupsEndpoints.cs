@@ -86,31 +86,6 @@ namespace DeBillPay_Backend.Endpoints
 
                 await db.SaveChangesAsync();
 
-                foreach (var friendId in validFriends)
-                {
-                    await NotificationService.CreateAsync(
-                        db,
-                        friendId,
-                        "added_to_group",
-                        $"Вас додали до групи: \"{group.Name}\"",
-                        null,
-                        group.GroupId
-
-                    );
-
-                    var friend = await db.Users.FindAsync(friendId);
-                    if (friend != null && !string.IsNullOrWhiteSpace(friend.Email))
-                    {
-                        var emailQueue = http.RequestServices.GetRequiredService<EmailQueue>();
-
-                        emailQueue.Enqueue(new EmailTask
-                        {
-                            To = friend.Email,
-                            Subject = "Вас додали до групи",
-                            Body = $"Привіт {friend.FirstName},\n\nВас додали до групи \"{group.Name}\".\n\nПерейдіть у додаток, щоб переглянути деталі."
-                        });
-                    }
-                }
                 return Results.Ok(new
                 {
                     message = "Group created successfully",
