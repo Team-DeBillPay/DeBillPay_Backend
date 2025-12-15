@@ -48,12 +48,7 @@ namespace DeBillPay_Backend.Endpoints
                 db.Users.Add(user);
                 await db.SaveChangesAsync();
 
-                await NotificationService.CreateAsync(
-                    db,
-                    user.UserId,
-                    "welcome",
-                    $"Вітаємо, {user.FirstName}! Ваш акаунт успішно створено."
-                );
+              
 
                 if (!string.IsNullOrWhiteSpace(user.Email))
                 {

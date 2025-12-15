@@ -85,7 +85,7 @@ namespace DeBillPay_Backend.Endpoints
                 }
 
                 await db.SaveChangesAsync();
-
+              
                 return Results.Ok(new
                 {
                     message = "Group created successfully",
