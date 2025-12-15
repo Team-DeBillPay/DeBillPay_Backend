@@ -354,7 +354,7 @@ public static class EditingEbillEndpoints
 
             RecalculateEbill(ebill);
 
-            if (userMadeChanges)
+            if (changedFields.Any())
             {
                 var actor = await db.Users.FirstAsync(u => u.UserId == userId);
 
