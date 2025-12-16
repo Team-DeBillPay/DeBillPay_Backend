@@ -1,35 +1,55 @@
-using Resend;
+using MailKit.Net.Smtp;
+using MailKit.Security;
+using MimeKit;
+using Microsoft.Extensions.Configuration;
 
 namespace DeBillPay_Backend.Services;
 
 public class EmailService
 {
-    private readonly ResendClient _resend;
+    private readonly IConfiguration _config;
 
-    public EmailService(ResendClient resend)
+    public EmailService(IConfiguration config)
     {
-        _resend = resend;
+        _config = config;
     }
 
     public async Task SendEmailAsync(string to, string subject, string body)
     {
+        var message = new MimeMessage();
+        message.From.Add(MailboxAddress.Parse(_config["Email:From"]));
+        message.To.Add(MailboxAddress.Parse(to));
+        message.Subject = subject;
+
+        message.Body = new TextPart("plain")
+        {
+            Text = body
+        };
+
+        using var client = new SmtpClient();
+
         try
         {
-            var email = new EmailMessage
-            {
-                From = "DeBillPay <onboarding@resend.dev>",
-                To = to,
-                Subject = subject,
-                TextBody = body
-            };
+            await client.ConnectAsync(
+                _config["Email:SmtpHost"],
+                int.Parse(_config["Email:SmtpPort"]),
+                SecureSocketOptions.StartTls
+            );
 
-            await _resend.EmailSendAsync(email);
+            await client.AuthenticateAsync(
+                _config["Email:Username"],
+                _config["Email:Password"]
+            );
 
-            Console.WriteLine($"[EmailService] Email sent to {to}");
+            await client.SendAsync(message);
+            await client.DisconnectAsync(true);
+
+            Console.WriteLine($"[EmailService] Sent email to {to}");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[EmailService] Failed to send email: {ex.Message}");
+            Console.WriteLine($"[EmailService] Failed to send email to {to}: {ex.Message}");
+            throw; // ⚠️ важливо
         }
     }
 }

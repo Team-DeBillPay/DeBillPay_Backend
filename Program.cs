@@ -76,12 +76,7 @@ var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey));
 
 builder.Services.AddHttpClient();
 builder.Services.AddOptions();
-builder.Services.AddHttpClient<ResendClient>();
 
-builder.Services.Configure<ResendClientOptions>(options =>
-{
-    options.ApiToken = builder.Configuration["RESEND_API_KEY"];
-});
 builder.Services.AddScoped<EmailService>();
 builder.Services.AddScoped<IGoogleAuthService, GoogleAuthService>();
 builder.Services.AddSingleton<EmailQueue>();

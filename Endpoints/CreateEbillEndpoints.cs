@@ -263,7 +263,7 @@ public static class CreateEbillEndpoints
                             UserId = organizerId,
                             AssignedAmount = Math.Round(share),
                             PaidAmount = 0,
-                            Balance = 0,
+                            Balance = Math.Round(share),
                             IsAdminRights = true,
                             IsEditorRights = true
                         });
