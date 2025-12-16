@@ -15,7 +15,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<LiqPayOptions>(builder.Configuration.GetSection("LiqPay"));
 
-builder.WebHost.UseUrls("http://0.0.0.0:5141");
+
 
 builder.Services.AddCors(options =>
 {

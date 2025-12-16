@@ -10,6 +10,7 @@ namespace DeBillPay_Backend.Services
 
         public EmailBackgroundService(EmailQueue queue, IConfiguration config)
         {
+            Console.WriteLine("[EmailBackgroundService] Started");
             _queue = queue;
             _config = config;
         }
@@ -41,7 +42,7 @@ namespace DeBillPay_Backend.Services
                     }
                 }
 
-                await Task.Delay(100, stoppingToken);
+                await Task.Delay(1000, stoppingToken);
             }
 
             Console.WriteLine("[EmailWorker] Stopped");
