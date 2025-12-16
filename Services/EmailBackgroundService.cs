@@ -29,11 +29,18 @@ namespace DeBillPay_Backend.Services
                     using var scope = _scopeFactory.CreateScope();
                     var emailService = scope.ServiceProvider.GetRequiredService<EmailService>();
 
-                    await emailService.SendEmailAsync(
-                        task.To,
-                        task.Subject,
-                        task.Body
-                    );
+                    try
+                    {
+                        await emailService.SendEmailAsync(
+                            task.To,
+                            task.Subject,
+                            task.Body
+                        );
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[EmailWorker] Email failed: {ex.Message}");
+                    }
                 }
 
                 await Task.Delay(100, stoppingToken);
