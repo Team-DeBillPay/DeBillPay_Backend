@@ -24,19 +24,7 @@ namespace DeBillPay_Backend.Data
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
-
-            foreach (var entityType in modelBuilder.Model.GetEntityTypes())
-            {
-                foreach (var property in entityType.GetProperties())
-                {
-                    if (property.ClrType == typeof(string))
-                    {
-                        property.SetIsUnicode(true);
-                        property.SetColumnType("text");
-                    }
-                }
-            }
-
+ 
             // USERS
             modelBuilder.Entity<User>()
                 .HasMany(u => u.EbillsOrganized)

@@ -203,13 +203,7 @@ public static class EditingEbillEndpoints
                 if (actor == null)
                     return Results.BadRequest(new { error = "User record missing" });
 
-                await EbillHistoryService.AddAsync(
-                    db,
-                    ebillId,
-                    userId,
-                    "added_participant",
-                     $"{actor.FirstName}{actor.LastName} додав(-ла) {addedUser.FirstName} {addedUser.LastName} до чеку"
-                );
+                
             }
 
 			if (actuallyAdded.Count == 0)
@@ -364,13 +358,7 @@ public static class EditingEbillEndpoints
             {
                 var actor = await db.Users.FirstAsync(u => u.UserId == userId);
 
-                foreach (var f in changedFields)
-                {
-                    await EbillHistoryService.AddAsync(
-                        db, ebillId, userId, "updated",
-                        $"{actor.FirstName} {actor.LastName} оновив(-ла) {f}"
-                    );
-                }
+               
             }
 
             await db.SaveChangesAsync();
@@ -456,7 +444,6 @@ public static class EditingEbillEndpoints
             userId,
             "removed_participant",
             $"{actorUser.FirstName} видалив(-ла) {participantToRemove.User.FirstName} з чеку"
-
         );
 
 

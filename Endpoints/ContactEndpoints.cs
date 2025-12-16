@@ -146,7 +146,7 @@ namespace DeBillPay_Backend.Endpoints
                     db,
                     receiverId,
                     "friend_invitation",
-                    $"Запрошення в друзі від {user.FirstName} {user.LastName}",
+                    $"Р—Р°РїСЂРѕС€РµРЅРЅСЏ РІ РґСЂСѓР·С– РІС–Рґ {user.FirstName} {user.LastName}",
                                             null,
                         null
                 );
@@ -155,20 +155,20 @@ namespace DeBillPay_Backend.Endpoints
                 {
                     try
                     {
-                       
+
                         var queue = http.RequestServices.GetRequiredService<EmailQueue>();
 
                         queue.Enqueue(new EmailTask
                         {
                             To = receiver.Email,
-                            Subject = "Нове запрошення в друзі",
-                            Body = $"Привіт {receiver.FirstName},\n\n" +
-                                   $"Ви отримали запрошення в друзі від {user.FirstName} {user.LastName}."
+                            Subject = "РќРѕРІРµ Р·Р°РїСЂРѕС€РµРЅРЅСЏ РІ РґСЂСѓР·С–",
+                            Body = $"РџСЂРёРІС–С‚ {receiver.FirstName},\n\n" +
+                                   $"Р’Рё РѕС‚СЂРёРјР°Р»Рё Р·Р°РїСЂРѕС€РµРЅРЅСЏ РІ РґСЂСѓР·С– РІС–Рґ {user.FirstName} {user.LastName}."
                         });
                     }
                     catch
                     {
-                        
+
                     }
                 }
                 return Results.Ok("Invitation sent");
