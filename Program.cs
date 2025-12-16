@@ -9,6 +9,7 @@ using Microsoft.OpenApi.Models;
 using System.Text.Json;
 using DeBillPay_Backend.Configuration;
 using Microsoft.Extensions.Options;
+using Resend;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -74,6 +75,14 @@ if (string.IsNullOrEmpty(secretKey))
 var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey));
 
 builder.Services.AddHttpClient();
+builder.Services.AddOptions();
+builder.Services.AddHttpClient<ResendClient>();
+
+builder.Services.Configure<ResendClientOptions>(options =>
+{
+    options.ApiToken = builder.Configuration["RESEND_API_KEY"];
+});
+builder.Services.AddScoped<EmailService>();
 builder.Services.AddScoped<IGoogleAuthService, GoogleAuthService>();
 builder.Services.AddSingleton<EmailQueue>();
 builder.Services.AddHostedService<EmailBackgroundService>();
