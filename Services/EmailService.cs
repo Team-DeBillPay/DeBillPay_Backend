@@ -1,48 +1,35 @@
-using MailKit.Net.Smtp;
-using MimeKit;
-using Microsoft.Extensions.Configuration;
+using Resend;
 
 namespace DeBillPay_Backend.Services;
 
-public static class EmailService
+public class EmailService
 {
-    public static async Task SendEmailAsync(string toEmail, string subject, string body, IConfiguration config)
-    {
-        // Перевірка валідності формату email
-        if (!MailboxAddress.TryParse(toEmail, out var parsedAddress))
-        {
-            Console.WriteLine($"[EmailService] Invalid email format: {toEmail}");
-            return; // просто пропускаємо відправку
-        }
+    private readonly ResendClient _resend;
 
+    public EmailService(ResendClient resend)
+    {
+        _resend = resend;
+    }
+
+    public async Task SendEmailAsync(string to, string subject, string body)
+    {
         try
         {
-            var emailMessage = new MimeMessage();
-            emailMessage.From.Add(new MailboxAddress("DeBillPay", config["Email:From"]));
-            emailMessage.To.Add(parsedAddress);
-            emailMessage.Subject = subject;
+            var email = new EmailMessage
+            {
+                From = "DeBillPay <onboarding@resend.dev>",
+                To = to,
+                Subject = subject,
+                TextBody = body
+            };
 
-            emailMessage.Body = new TextPart("plain") { Text = body };
+            await _resend.EmailSendAsync(email);
 
-            using var client = new SmtpClient();
-
-            if (!int.TryParse(config["Email:SmtpPort"], out int smtpPort))
-                throw new InvalidOperationException("Email:SmtpPort invalid or missing");
-
-            await client.ConnectAsync(
-                config["Email:SmtpHost"],
-                smtpPort,
-                MailKit.Security.SecureSocketOptions.StartTls
-            );
-
-            await client.AuthenticateAsync(config["Email:Username"], config["Email:Password"]);
-            await client.SendAsync(emailMessage);
-            await client.DisconnectAsync(true);
+            Console.WriteLine($"[EmailService] Email sent to {to}");
         }
         catch (Exception ex)
         {
-            // Лог, але API не падає
-            Console.WriteLine($"[EmailService] Failed to send email to {toEmail}: {ex.Message}");
+            Console.WriteLine($"[EmailService] Failed to send email: {ex.Message}");
         }
     }
 }

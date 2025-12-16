@@ -6,13 +6,14 @@ namespace DeBillPay_Backend.Services
     public class EmailBackgroundService : BackgroundService
     {
         private readonly EmailQueue _queue;
-        private readonly IConfiguration _config;
+        private readonly IServiceScopeFactory _scopeFactory;
 
-        public EmailBackgroundService(EmailQueue queue, IConfiguration config)
+        public EmailBackgroundService(
+            EmailQueue queue,
+            IServiceScopeFactory scopeFactory)
         {
-            Console.WriteLine("[EmailBackgroundService] Started");
             _queue = queue;
-            _config = config;
+            _scopeFactory = scopeFactory;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -21,31 +22,22 @@ namespace DeBillPay_Backend.Services
 
             while (!stoppingToken.IsCancellationRequested)
             {
-                var emailTask = _queue.Dequeue();
+                var task = _queue.Dequeue();
 
-                if (emailTask != null)
+                if (task != null)
                 {
-                    try
-                    {
-                        await EmailService.SendEmailAsync(
-                            emailTask.To,
-                            emailTask.Subject,
-                            emailTask.Body,
-                            _config
-                        );
+                    using var scope = _scopeFactory.CreateScope();
+                    var emailService = scope.ServiceProvider.GetRequiredService<EmailService>();
 
-                        Console.WriteLine($"[EmailWorker] Sent email to {emailTask.To}");
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"[EmailWorker] Error sending email: {ex.Message}");
-                    }
+                    await emailService.SendEmailAsync(
+                        task.To,
+                        task.Subject,
+                        task.Body
+                    );
                 }
 
-                await Task.Delay(1000, stoppingToken);
+                await Task.Delay(100, stoppingToken);
             }
-
-            Console.WriteLine("[EmailWorker] Stopped");
         }
     }
 }
