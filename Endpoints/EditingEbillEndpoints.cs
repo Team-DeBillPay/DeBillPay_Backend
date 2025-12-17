@@ -358,7 +358,13 @@ public static class EditingEbillEndpoints
             {
                 var actor = await db.Users.FirstAsync(u => u.UserId == userId);
 
-               
+                foreach (var f in changedFields)
+                {
+                    await EbillHistoryService.AddAsync(
+                        db, ebillId, userId, "updated",
+                        $"{actor.FirstName} {actor.LastName} оновив(-ла) {f}"
+                    );
+                }
             }
 
             await db.SaveChangesAsync();
