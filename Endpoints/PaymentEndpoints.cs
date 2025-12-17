@@ -62,7 +62,7 @@ public static class PaymentEndpoints
 
             var orderId = $"ebill-{ebill.EbillId}-user-{userId}-{Guid.NewGuid():N}";
 
-            var resultUrl = $"http://localhost:5173/checks/{ebill.EbillId}";
+            var resultUrl = $"https://debillpayfrontend.vercel.app/checks/{ebill.EbillId}";
 
             var (data, signature) = liqPay.CreatePaymentData(
                 amount: amount,
