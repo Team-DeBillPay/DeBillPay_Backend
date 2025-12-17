@@ -25,7 +25,7 @@ builder.Services.AddCors(options =>
         policy.WithOrigins(
                 "http://localhost:5173",
                 "https://debillpay-backend.onrender.com",
-                "https://debillpayfrontend.vercel.app/"
+                "https://debillpayfrontend.vercel.app"
             )
             .AllowAnyMethod()
             .AllowAnyHeader()
