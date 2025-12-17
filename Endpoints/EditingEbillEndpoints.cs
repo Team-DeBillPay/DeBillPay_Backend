@@ -19,7 +19,7 @@ public static class EditingEbillEndpoints
     {
         string s = ebill.Scenario.ToLower();
 
-        foreach (var p in ebill.Participants)
+       
            
 
         if (s == "спільні витрати")
