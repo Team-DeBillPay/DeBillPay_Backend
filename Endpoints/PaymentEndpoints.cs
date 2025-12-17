@@ -158,7 +158,7 @@ public static class PaymentEndpoints
                         }
 
                         participant.Balance = Decimal.Round(participant.Balance + payment.Amount, 2, MidpointRounding.AwayFromZero);
-                        participant.PaidAmount = participant.Balance;
+                      
 
                         if (participant.Balance >= participant.AssignedAmount)
                         {
